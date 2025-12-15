@@ -1775,17 +1775,52 @@
             captureButton.disabled = true;
 
             try {
-                const canvas = await html2canvas(cardElement, {
+                // 1. Tạo bản sao của thẻ để xử lý (tránh ảnh hưởng giao diện hiện tại)
+                const clone = cardElement.cloneNode(true);
+                
+                // 2. Thiết lập style cho bản sao để nó mở rộng hết cỡ (không bị cuộn)
+                clone.style.position = 'absolute';
+                clone.style.top = '-10000px'; // Đưa ra khỏi màn hình
+                clone.style.left = '0';
+                clone.style.width = 'fit-content'; // Tự động mở rộng theo nội dung
+                clone.style.height = 'auto';
+                clone.style.maxWidth = 'none'; // Bỏ giới hạn chiều rộng
+                clone.style.maxHeight = 'none'; // Bỏ giới hạn chiều cao
+                clone.style.overflow = 'visible'; // Hiển thị tất cả nội dung tràn
+                clone.style.zIndex = '-1000';
+
+                // Xử lý phần body bên trong bản sao (nơi chứa bảng có thanh cuộn)
+                const cloneBody = clone.querySelector('.detailed-view-body');
+                if (cloneBody) {
+                    cloneBody.style.overflow = 'visible';
+                    cloneBody.style.width = 'auto';
+                    cloneBody.style.maxWidth = 'none';
+                }
+
+                // Ẩn các nút bấm trong bản sao để ảnh đẹp hơn
+                const buttons = clone.querySelectorAll('button');
+                buttons.forEach(btn => btn.style.display = 'none');
+
+                // Thêm bản sao vào body để html2canvas có thể chụp
+                document.body.appendChild(clone);
+
+                const canvas = await html2canvas(clone, {
                     scale: 2, // Tăng độ phân giải cho ảnh nét hơn
                     useCORS: true,
-                    backgroundColor: '#ffffff' // Đảm bảo nền trắng
+                    backgroundColor: '#ffffff', // Đảm bảo nền trắng
+                    windowWidth: clone.scrollWidth, // Báo cho html2canvas biết chiều rộng thực tế
+                    windowHeight: clone.scrollHeight
                 });
 
-                const link = document.createElement('a');
-                link.href = canvas.toDataURL('image/png');
-                const safeName = user.name.replace(/[^a-zA-Z0-9]/g, '_'); // Làm sạch tên để dùng cho tên file
-                link.download = `ChiTiet_${safeName}_${user.userId}.png`;
-                link.click(); // Tự động tải file về
+                // Xóa bản sao sau khi chụp xong
+                document.body.removeChild(clone);
+
+                const dataUrl = canvas.toDataURL('image/png');
+                
+                // Hiển thị ảnh trong Modal kết quả (tái sử dụng modal xuất ảnh hàng loạt)
+                // Chúng ta đưa vào mảng vì hàm showExportResultModal nhận mảng
+                showExportResultModal([dataUrl]);
+
             } catch (error) {
                 console.error('Lỗi khi chụp ảnh chi tiết:', error);
                 alert('Đã xảy ra lỗi khi chụp ảnh. Vui lòng thử lại.');
