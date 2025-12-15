@@ -1527,6 +1527,7 @@
                         <button class="btn btn-warning" onclick="openGroupCheckModal()" style="width: 100%; margin-top: 8px;">Check Nhóm</button>
                         <button class="btn btn-info" onclick="triggerGroupCheckFromFile()" style="width: 100%; margin-top: 8px;">Check Nhóm Theo File</button>
                         <input type="file" id="groupCheckFile" accept=".txt" style="display: none;" onchange="executeGroupCheckFromFile(this)">
+                        <button class="btn btn-secondary" onclick="openPointConfigModal()" style="width: 100%; margin-top: 8px;">⚙️ Cấu hình điểm</button>
                     </div>
                 </div>
                 <button class="btn btn-export export-image-btn" onclick="exportToImage()">📸 Xuất Ảnh</button>
@@ -1723,6 +1724,39 @@
     </div>
     <!-- === KẾT THÚC THÊM MỚI === -->
 
+    <!-- === THÊM MỚI: Modal Cấu Hình Điểm === -->
+    <div id="pointConfigModal" class="modal-overlay">
+        <div class="modal-container" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2>Cấu Hình Điểm Quái</h2>
+                <button class="modal-close-btn" onclick="closePointConfigModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 13px; color: #666; margin-bottom: 15px;">Nhập số điểm tương ứng cho mỗi con quái. Cài đặt này sẽ được lưu lại cho lần sau.</p>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div class="input-group-compact" style="justify-content: space-between;">
+                        <label for="configL2">Quái Level 2:</label>
+                        <input type="number" id="configL2" class="url-input" style="width: 80px; text-align: center;">
+                    </div>
+                    <div class="input-group-compact" style="justify-content: space-between;">
+                        <label for="configL3">Quái Level 3:</label>
+                        <input type="number" id="configL3" class="url-input" style="width: 80px; text-align: center;">
+                    </div>
+                    <div class="input-group-compact" style="justify-content: space-between;">
+                        <label for="configL4">Quái Level 4:</label>
+                        <input type="number" id="configL4" class="url-input" style="width: 80px; text-align: center;">
+                    </div>
+                    <div class="input-group-compact" style="justify-content: space-between;">
+                        <label for="configL5">Quái Level 5:</label>
+                        <input type="number" id="configL5" class="url-input" style="width: 80px; text-align: center;">
+                    </div>
+                </div>
+                <button onclick="savePointConfig()" class="btn btn-primary" style="width: 100%; margin-top: 20px;">Lưu & Tính lại</button>
+            </div>
+        </div>
+    </div>
+    <!-- === KẾT THÚC THÊM MỚI === -->
+
     <!-- === THÊM MỚI: Modal Tính Điểm === -->
     <div id="pointCalculatorModal" class="modal-overlay">
         <div class="modal-container" style="max-width: 400px;">
@@ -1778,8 +1812,18 @@
         let countdownIntervalId = null;
         let countdownTargetTimestamp = null;
         // === KẾT THÚC THÊM MỚI ===        
+        // === CẤU HÌNH ĐIỂM QUÁI ===
+        // Đổi từ const sang let để có thể thay đổi
+        let MONSTER_POINTS_CONFIG = {
+            l1: 0,  // Điểm cho quái Level 1
+            l2: 1,  // Điểm cho quái Level 2
+            l3: 4,  // Điểm cho quái Level 3
+            l4: 16, // Điểm cho quái Level 4
+            l5: 32  // Điểm cho quái Level 5
+        };
         const localStorageKey = 'fvnMonsterHuntData'; // Key để lưu dữ liệu
         const debtListStorageKey = 'fvnMonsterHuntStoredDebt'; // Key để lưu danh sách nợ
+        const pointConfigStorageKey = 'fvnMonsterPointsConfig'; // Key để lưu cấu hình điểm
         // === THÊM MỚI: Logic cho dropdown ===
         function toggleDropdown(event) {
             document.getElementById("displayOptionsDropdown").classList.toggle("show");
@@ -2101,10 +2145,11 @@
         }
 
         function calculatePoints(item) {
-            item.points = item.levels.l2 +
-                (item.levels.l3 * 4) +
-                (item.levels.l4 * 16) +
-                (item.levels.l5 * 32);
+            item.points = (item.levels.l1 * MONSTER_POINTS_CONFIG.l1) +
+                (item.levels.l2 * MONSTER_POINTS_CONFIG.l2) +
+                (item.levels.l3 * MONSTER_POINTS_CONFIG.l3) +
+                (item.levels.l4 * MONSTER_POINTS_CONFIG.l4) +
+                (item.levels.l5 * MONSTER_POINTS_CONFIG.l5);
             updateStatus(item);
         }
 
@@ -2137,11 +2182,11 @@
 
             // Tính tổng điểm cho mỗi loại quái
             const monsterPoints = {
-                l1: 0, // L1 không có điểm
-                l2: (monsterTotals.l2 || 0) * 1,
-                l3: (monsterTotals.l3 || 0) * 4,
-                l4: (monsterTotals.l4 || 0) * 16,
-                l5: (monsterTotals.l5 || 0) * 32,
+                l1: (monsterTotals.l1 || 0) * MONSTER_POINTS_CONFIG.l1,
+                l2: (monsterTotals.l2 || 0) * MONSTER_POINTS_CONFIG.l2,
+                l3: (monsterTotals.l3 || 0) * MONSTER_POINTS_CONFIG.l3,
+                l4: (monsterTotals.l4 || 0) * MONSTER_POINTS_CONFIG.l4,
+                l5: (monsterTotals.l5 || 0) * MONSTER_POINTS_CONFIG.l5,
             };
 
             // --- Biểu đồ 1: Tỷ lệ Trạng thái ---
@@ -2385,7 +2430,11 @@
                 const l3 = parseInt(totalRow[l3Index]) || 0;
                 const l4 = parseInt(totalRow[l4Index]) || 0;
                 const l5 = parseInt(totalRow[l5Index]) || 0;
-                totalPoints = l2 + (l3 * 4) + (l4 * 16) + (l5 * 32);
+                totalPoints = (l1 * MONSTER_POINTS_CONFIG.l1) + 
+                              (l2 * MONSTER_POINTS_CONFIG.l2) + 
+                              (l3 * MONSTER_POINTS_CONFIG.l3) + 
+                              (l4 * MONSTER_POINTS_CONFIG.l4) + 
+                              (l5 * MONSTER_POINTS_CONFIG.l5);
 
                 // Tạo HTML cho phần chi tiết
                 breakdownHtml = `
@@ -2757,6 +2806,7 @@
         // Gọi showTab ban đầu để ẩn các tab không active
         document.addEventListener('DOMContentLoaded', () => {
             // Thêm class để ẩn cột ID và Quái Tuần mặc định
+            loadPointConfig(); // Tải cấu hình điểm trước khi làm bất cứ việc gì
             loadBookmarkedData(); // Thử tải dữ liệu đã lưu
             if (processedData.length === 0) {
                 // Nếu không có dữ liệu lưu, thiết lập trạng thái mặc định
@@ -3019,7 +3069,7 @@
                     // Points Hunt formula (column H)
                     const pointsCell = XLSX.utils.encode_cell({ r: rowNum - 1, c: 7 });
                     ws[pointsCell] = {
-                        f: `D${rowNum}+(E${rowNum}*4)+(F${rowNum}*16)+(G${rowNum}*32)`,
+                        f: `(C${rowNum}*${MONSTER_POINTS_CONFIG.l1})+(D${rowNum}*${MONSTER_POINTS_CONFIG.l2})+(E${rowNum}*${MONSTER_POINTS_CONFIG.l3})+(F${rowNum}*${MONSTER_POINTS_CONFIG.l4})+(G${rowNum}*${MONSTER_POINTS_CONFIG.l5})`,
                         v: item.points
                     };
 
@@ -4505,6 +4555,49 @@
             document.getElementById('calcTotalCost').textContent = totalCost.toLocaleString('en-US');
             
             resultDiv.style.display = 'block';
+        }
+
+        // === THÊM MỚI: Logic Cấu Hình Điểm ===
+        function openPointConfigModal() {
+            document.getElementById('configL2').value = MONSTER_POINTS_CONFIG.l2;
+            document.getElementById('configL3').value = MONSTER_POINTS_CONFIG.l3;
+            document.getElementById('configL4').value = MONSTER_POINTS_CONFIG.l4;
+            document.getElementById('configL5').value = MONSTER_POINTS_CONFIG.l5;
+            document.getElementById('pointConfigModal').classList.add('active');
+        }
+
+        function closePointConfigModal() {
+            document.getElementById('pointConfigModal').classList.remove('active');
+        }
+
+        function loadPointConfig() {
+            const savedConfig = localStorage.getItem(pointConfigStorageKey);
+            if (savedConfig) {
+                try {
+                    const parsed = JSON.parse(savedConfig);
+                    // Merge với config mặc định để đảm bảo không bị thiếu key
+                    MONSTER_POINTS_CONFIG = { ...MONSTER_POINTS_CONFIG, ...parsed };
+                } catch (e) {
+                    console.error("Lỗi tải cấu hình điểm:", e);
+                }
+            }
+        }
+
+        function savePointConfig() {
+            MONSTER_POINTS_CONFIG.l2 = parseInt(document.getElementById('configL2').value) || 0;
+            MONSTER_POINTS_CONFIG.l3 = parseInt(document.getElementById('configL3').value) || 0;
+            MONSTER_POINTS_CONFIG.l4 = parseInt(document.getElementById('configL4').value) || 0;
+            MONSTER_POINTS_CONFIG.l5 = parseInt(document.getElementById('configL5').value) || 0;
+
+            localStorage.setItem(pointConfigStorageKey, JSON.stringify(MONSTER_POINTS_CONFIG));
+            
+            // Tính toán lại điểm cho toàn bộ dữ liệu hiện có
+            if (processedData.length > 0) {
+                processedData.forEach(item => calculatePoints(item));
+                updateUI();
+            }
+            closePointConfigModal();
+            alert("Đã lưu cấu hình điểm và cập nhật bảng!");
         }
     </script>
 </body>
