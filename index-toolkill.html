@@ -651,6 +651,25 @@
             cursor: pointer;
             user-select: none; /* Ngăn người dùng vô tình bôi đen dấu *** */
         }
+
+        /* SMART: Style cho hàng lọt lưới (có trong trung gian nhưng thiếu đầu/cuối) */
+        .missed-row {
+            background-color: #fff9c4 !important; /* Vàng nhạt nổi bật */
+        }
+        .missed-row td {
+            color: #856404; /* Màu chữ nâu vàng */
+        }
+        .missed-tag {
+            display: inline-block;
+            background-color: #ffc107;
+            color: #000;
+            font-size: 10px;
+            padding: 2px 5px;
+            border-radius: 4px;
+            margin-left: 5px;
+            font-weight: bold;
+            vertical-align: middle;
+        }
     </style>
 </head>
 
@@ -731,6 +750,17 @@
                     </select>
                 </div>
                 <div id="julyStatus" class="status"></div>
+            </div>
+        </div>
+        
+        <!-- SMART: Khu vực tải dữ liệu trung gian để tránh sót ID -->
+        <div class="upload-section">
+            <div class="upload-box" style="background-color: #fffde7; border: 1px dashed #fbc02d;">
+                <h2 style="color: #f57f17;">3. Dữ liệu Trung gian / Bổ sung (Tùy chọn)</h2>
+                <p style="margin: 5px 0; font-size: 12px; color: #666;">Tải lên các file ở giữa (ví dụ: ngày 15/12) để đảm bảo không bị sót User ID nào xuất hiện trong khoảng thời gian này nhưng không có ở đầu/cuối.</p>
+                <p style="margin: 5px 0; font-size: 12px; color: #e65100;"><strong>Mới:</strong> Các ID "lọt lưới" (chỉ có trong file này hoặc thiếu đầu/cuối) sẽ được tô màu vàng và đánh dấu ⚠️.</p>
+                <input type="file" id="intermediateFile" multiple accept=".xlsx,.xls" onchange="handleIntermediateUpload(event)" />
+                <div id="intermediateStatus" class="status"></div>
             </div>
         </div>
 
@@ -925,6 +955,10 @@
         // Biến toàn cục
         let juneData = {};
         let julyData = {};
+        let intermediateData = {}; // SMART: Biến lưu dữ liệu trung gian
+        let juneFileLabel = "Đầu kỳ";
+        let julyFileLabel = "Cuối kỳ";
+        let intermediateFileLabel = "Trung gian";
         let chartInstance;
         let tempOcrData = null; // Dữ liệu tạm thời từ OCR
         let currentData = [];
@@ -1018,6 +1052,18 @@
             return value.toLocaleString('vi-VN');
         };
 
+        // SMART: Hàm trích xuất ngày tháng từ tên file
+        function extractDateFromFileName(filename) {
+            if (!filename) return "";
+            // Tìm các mẫu ngày tháng phổ biến: dd/mm/yyyy, dd-mm-yyyy, dd_mm_yyyy
+            const dateMatch = filename.match(/(\d{1,2}[-/_.]\d{1,2}[-/_.]\d{4})/);
+            if (dateMatch) {
+                // Chuẩn hóa về dạng dd/mm/yyyy cho dễ đọc
+                return dateMatch[1].replace(/[-_.]/g, '/');
+            }
+            return filename; // Nếu không tìm thấy ngày, trả về tên file gốc
+        }
+
         // Hàm tải dữ liệu với logic ưu tiên
         function loadData(type) {
             const fileInput = document.getElementById(`${type}File`);
@@ -1040,6 +1086,27 @@
         function handleFileUpload(file, type) {
             const reader = new FileReader();
             const statusElement = document.getElementById(`${type}Status`);
+
+            // --- SMART: Tự động phát hiện tháng từ tên file ---
+            const monthMatch = file.name.match(/(?:tháng|month|t)[^\d]*(\d+)/i);
+            if (monthMatch && monthMatch[1]) {
+                const detectedMonth = parseInt(monthMatch[1], 10);
+                if (detectedMonth >= 1 && detectedMonth <= 12) {
+                    const select = document.getElementById(`${type}MonthSelect`);
+                    if (select && parseInt(select.value) !== detectedMonth) {
+                        select.value = detectedMonth;
+                        updateMonth(type);
+                        console.log(`[Smart] Đã tự động chọn Tháng ${detectedMonth} cho ${type} dựa trên tên file.`);
+                    }
+                }
+            }
+            // --------------------------------------------------
+
+            // SMART: Lưu tên file/ngày tháng để dùng cho ghi chú
+            const dateLabel = extractDateFromFileName(file.name);
+            if (type === 'june') juneFileLabel = dateLabel;
+            else julyFileLabel = dateLabel;
+            // --------------------------------------------------
 
             reader.onload = function (e) {
                 try {
@@ -1134,16 +1201,24 @@
                 const data = new Uint8Array(arrayBuffer);
                 const workbook = XLSX.read(data, { type: 'array' });
                 const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                
+                // Cố gắng lấy tên file từ URL nếu có thể để làm nhãn ngày tháng
+                const fileNameFromUrl = rawUrl.split('/').pop().split('?')[0] || (type === 'june' ? "File 1" : "File 3");
+                if (type === 'june') juneFileLabel = extractDateFromFileName(fileNameFromUrl); else julyFileLabel = extractDateFromFileName(fileNameFromUrl);
                 const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
 
                 const processed = processData(jsonData).data;
                 if (type === 'june') {
                     juneData = processed;
                     statusElement.textContent = `Đã tải tháng 6 từ URL: ${Object.keys(juneData).length} người chơi.`;
+                    // SMART: Lưu URL thành công vào localStorage
+                    localStorage.setItem('juneLastUrl', rawUrl);
                     statusElement.className = 'status success';
                 } else {
                     julyData = processed;
                     statusElement.textContent = `Đã tải tháng 7 từ URL: ${Object.keys(julyData).length} người chơi.`;
+                    // SMART: Lưu URL thành công vào localStorage
+                    localStorage.setItem('julyLastUrl', rawUrl);
                     statusElement.className = 'status success';
                 }
 
@@ -1159,17 +1234,75 @@
             }
         }
 
+        // SMART: Hàm xử lý upload file trung gian (hỗ trợ nhiều file cùng lúc)
+        function handleIntermediateUpload(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+
+            const statusElement = document.getElementById('intermediateStatus');
+            statusElement.textContent = `Đang xử lý ${files.length} file...`;
+            
+            let processedCount = 0;
+
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+                        const result = processData(jsonData);
+                        
+                        // SMART: Gán nhãn nguồn gốc (ngày tháng) cho từng user trong file này
+                        const fileLabel = extractDateFromFileName(file.name);
+                        Object.values(result.data).forEach(user => {
+                            user.sourceLabel = fileLabel;
+                        });
+
+                        // Gộp dữ liệu vào biến intermediateData
+                        Object.assign(intermediateData, result.data);
+                        processedCount++;
+
+                        statusElement.textContent = `Đã quét thêm ${Object.keys(intermediateData).length} ID từ các file trung gian.`;
+                        statusElement.className = 'status success';
+
+                        // Nếu đã có dữ liệu chính, tự động so sánh lại để cập nhật bảng
+                        if (Object.keys(juneData).length > 0 || Object.keys(julyData).length > 0) {
+                            compareData();
+                        }
+                    } catch (error) {
+                        console.error("Lỗi file trung gian:", error);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
         // Hàm xử lý dữ liệu
         function processData(sheetData) {
             const data = {};
             let headerRowIndex = -1;
 
-            for (let i = 0; i < sheetData.length; i++) {
+            // SMART: Tìm hàng tiêu đề thông minh hơn (tìm hàng chứa nhiều từ khóa quan trọng nhất)
+            let maxKeywordsFound = 0;
+            const essentialKeywords = ['user id', 'id', 'tên', 'name', 'kills', 'tiêu diệt', 'rank'];
+
+            for (let i = 0; i < Math.min(sheetData.length, 20); i++) { // Chỉ quét 20 dòng đầu
                 const row = sheetData[i];
-                if (row && row.includes("User ID")) {
+                if (!row || !Array.isArray(row)) continue;
+                
+                const rowStr = row.map(cell => String(cell).toLowerCase()).join(' ');
+                let found = 0;
+                essentialKeywords.forEach(kw => { if (rowStr.includes(kw)) found++; });
+
+                if (found > maxKeywordsFound && found >= 2) { // Phải khớp ít nhất 2 từ khóa
+                    maxKeywordsFound = found;
                     headerRowIndex = i;
-                    break;
                 }
+                if (maxKeywordsFound >= 3) break; // Tìm thấy hàng rất giống tiêu đề thì dừng
             }
 
             if (headerRowIndex === -1) throw new Error("Không tìm thấy hàng tiêu đề");
@@ -1203,7 +1336,10 @@
 
             headers.forEach((header, index) => {
                 if (!header) return;
-                const lowerHeader = header.toString().trim().toLowerCase();
+                // SMART: Chuẩn hóa tiêu đề (bỏ dấu câu, khoảng trắng thừa, chuyển về chữ thường)
+                const lowerHeader = header.toString().trim().toLowerCase()
+                    .replace(/[_\-\.]/g, ' ')
+                    .replace(/\s+/g, ' ');
                 
                 // Bỏ qua cột STT
                 if (lowerHeader === 'stt' || lowerHeader === 'no') return;
@@ -1231,8 +1367,9 @@
                 const row = sheetData[i];
                 if (!row || row.length === 0) continue;
 
-                const userId = row[userIdIndex];
+                let userId = row[userIdIndex];
                 if (!userId) continue;
+                userId = String(userId).trim(); // SMART: Chuẩn hóa ID (xóa khoảng trắng thừa)
 
                 const userObj = {
                     name: 'Không xác định',
@@ -1276,7 +1413,12 @@
 
             setTimeout(() => {
                 try {
-                    const allUserIds = new Set([...Object.keys(juneData), ...Object.keys(julyData)]);
+                    // SMART: Gộp ID từ cả 3 nguồn: Tháng đầu, Tháng cuối và Trung gian
+                    const allUserIds = new Set([
+                        ...Object.keys(juneData), 
+                        ...Object.keys(julyData),
+                        ...Object.keys(intermediateData)
+                    ]);
                     currentData = [];
 
                     // 1. Xác định danh sách các cột cần hiển thị
@@ -1291,6 +1433,7 @@
                     };
                     collectKeys(juneData);
                     collectKeys(julyData);
+                    collectKeys(intermediateData); // Quét cả key của file trung gian
 
                     // 2. Xây dựng activeStatsConfig
                     activeStatsConfig = [];
@@ -1331,32 +1474,69 @@
                     Array.from(allUserIds).forEach(userId => {
                         const juneStats = juneData[userId];
                         const julyStats = julyData[userId];
+                        const interStats = intermediateData[userId]; // Lấy thông tin từ file trung gian nếu có
 
-                        if (!juneStats && !julyStats) return;
+                        // Lấy nhãn ngày tháng cụ thể của user này từ file trung gian (nếu có)
+                        const interLabel = interStats?.sourceLabel || intermediateFileLabel;
+
+                        // SMART LOGIC: Xác định cặp so sánh và ghi chú
+                        let startStats = null;
+                        let endStats = null;
+                        let note = "";
+                        let isMissed = false;
+
+                        // Ưu tiên 1: Có Đầu (June) và Cuối (July) -> So sánh chuẩn
+                        if (juneStats && julyStats) {
+                            startStats = juneStats;
+                            endStats = julyStats;
+                            note = ""; // Không cần ghi chú nếu là chuẩn
+                        }
+                        // Ưu tiên 2: Có Đầu (June) và Giữa (Inter), KHÔNG có Cuối -> So sánh Đầu vs Giữa
+                        else if (juneStats && interStats) {
+                            startStats = juneStats;
+                            endStats = interStats;
+                            note = `Time check ${juneFileLabel} đến ${interLabel}`;
+                            isMissed = true; // Vẫn đánh dấu để biết là trường hợp đặc biệt
+                        }
+                        // Ưu tiên 3: Có Giữa (Inter) và Cuối (July), KHÔNG có Đầu -> So sánh Giữa vs Cuối
+                        else if (interStats && julyStats) {
+                            startStats = interStats;
+                            endStats = julyStats;
+                            note = `Time check ${interLabel} đến ${julyFileLabel}`;
+                            isMissed = true;
+                        }
+                        // Trường hợp còn lại: Chỉ có 1 file hoặc không đủ cặp -> Không so sánh được (chỉ hiện data có sẵn)
+                        else {
+                            startStats = juneStats || interStats || null;
+                            endStats = julyStats || interStats || null;
+                            isMissed = !!interStats && (!juneStats || !julyStats);
+
+                            // SMART: Bổ sung ghi chú cho trường hợp chỉ có file trung gian (không có đầu/cuối để so sánh)
+                            if (isMissed && !juneStats && !julyStats) {
+                                note = `Dữ liệu từ ${interLabel}`;
+                            }
+                        }
                         
                         const dataItem = {
                             userId,
-                            name: julyStats?.name || juneStats?.name || 'Không xác định',
-                            rank: julyStats?.rank || juneStats?.rank || 'Không xác định',
-                            juneStats,
-                            julyStats,
-                            hasBothData: juneStats && julyStats
+                            // SMART: Ưu tiên lấy tên/rank từ tháng 7 -> tháng 6 -> trung gian
+                            name: julyStats?.name || juneStats?.name || interStats?.name || 'Không xác định',
+                            rank: julyStats?.rank || juneStats?.rank || interStats?.rank || 'Không xác định',
+                            juneStats: startStats, // Gán vào slot hiển thị bên trái
+                            julyStats: endStats,   // Gán vào slot hiển thị bên phải
+                            hasBothData: !!(startStats && endStats),
+                            isMissed: isMissed,
+                            note: note // Lưu ghi chú
                         };
 
                         // Tính toán tất cả các trường chênh lệch (Diff)
                         activeStatsConfig.forEach(stat => {
-                            dataItem[`${stat.key}Diff`] = calculateDifference(julyStats?.[stat.key], juneStats?.[stat.key]);
+                            dataItem[`${stat.key}Diff`] = calculateDifference(endStats?.[stat.key], startStats?.[stat.key]);
                         });
-                        dataItem['win_rateDiff'] = getWinRateDiffValue(julyStats?.win_rate, juneStats?.win_rate);
+                        dataItem['win_rateDiff'] = getWinRateDiffValue(endStats?.win_rate, startStats?.win_rate);
                         
                         currentData.push({
-                            userId,
-                            name: julyStats?.name || juneStats?.name || 'Không xác định',
-                            rank: julyStats?.rank || juneStats?.rank || 'Không xác định',
-                            juneStats,
-                            julyStats,
                             ...dataItem, // Thêm tất cả các trường diff đã tính
-                            hasBothData: juneStats && julyStats
                         });
                     });
 
@@ -1413,6 +1593,13 @@
             thWinRate.dataset.sortKey = 'win_rateDiff';
             thWinRate.innerHTML = 'Tỉ Lệ Chiến Thắng <span class="sort-icon"></span>';
             tr1.appendChild(thWinRate);
+
+            // Cột Ghi chú (Mới)
+            const thNote = document.createElement('th');
+            thNote.rowSpan = 2;
+            thNote.className = 'note-col';
+            thNote.innerHTML = 'Ghi chú';
+            tr1.appendChild(thNote);
 
             thead.appendChild(tr1);
 
@@ -1510,10 +1697,17 @@
 
 
             sortedData.forEach((item, index) => {
-                const { userId, name, rank, juneStats, julyStats, hasBothData } = item;
+                const { userId, name, rank, juneStats, julyStats, hasBothData, isMissed, note } = item;
 
                 const row = document.createElement('tr');
                 if (!hasBothData) row.classList.add('missing-data-row');
+                if (isMissed) row.classList.add('missed-row'); // SMART: Thêm class tô màu vàng
+
+                // SMART: Thêm nhãn cảnh báo vào tên
+                let displayName = name;
+                if (isMissed) {
+                    displayName += ` <span class="missed-tag" title="${note || 'Dữ liệu không đầy đủ'}">⚠️ Check lẻ</span>`;
+                }
 
                 // Tạo HTML cho các chỉ số bằng cách lặp qua mảng cấu hình
                 let statsHtml = '';
@@ -1537,11 +1731,12 @@
 
                 row.innerHTML = `
             <td>${index + 1}</td>
-            <td>${name}</td>
+            <td>${displayName}</td>
             <td class="id-col">${userId}</td>
             <td class="rank-col">${rank}</td>
             ${statsHtml}
             ${winRateHtml}
+            <td class="note-col" style="font-size: 11px; color: #d32f2f; font-style: italic;">${note || ''}</td>
         `;
 
                 tableBody.appendChild(row);
@@ -2055,6 +2250,7 @@
                     const headers = ["Loại Dữ Liệu", "Tên", "User ID", "Rank"];
                     fullExportConfig.forEach(s => headers.push(s.name));
                     headers.push("Tỉ Lệ Chiến Thắng");
+                    headers.push("Ghi chú");
 
                     // Tiêu đề chính
                     // Ghi đè dòng trống đầu tiên bằng tiêu đề báo cáo
@@ -2098,7 +2294,7 @@
                     };
 
                     visibleData.forEach((item, index) => {
-                        const { userId, name, rank, juneStats, julyStats } = item;
+                        const { userId, name, rank, juneStats, julyStats, note } = item;
                         const getStat = (stats, key) => (stats ? stats[key] : undefined);
                         
                         // Tạo style nền xen kẽ (zebra striping)
@@ -2110,6 +2306,7 @@
                         ];
                         fullExportConfig.forEach(s => juneRow.push(createNumericCell(getStat(juneStats, s.key), selectedMonths.june, rowStyle)));
                         juneRow.push(createCell(getStat(juneStats, 'win_rate') || '0%', 's', null, rowStyle));
+                        juneRow.push(createCell(note || '', 's', null, { ...rowStyle, font: { color: { rgb: "FFD32F2F" }, italic: true } }));
                         dataToExport.push(juneRow);
 
                         // Tạo dòng tháng 7
@@ -2118,6 +2315,7 @@
                         ];
                         fullExportConfig.forEach(s => julyRow.push(createNumericCell(getStat(julyStats, s.key), selectedMonths.july, rowStyle)));
                         julyRow.push(createCell(getStat(julyStats, 'win_rate') || '0%', 's', null, rowStyle));
+                        julyRow.push(createCell("", 's', null, rowStyle));
                         dataToExport.push(julyRow);
 
                         // Tạo dòng Diff
@@ -2135,6 +2333,7 @@
                             ));
                         });
                         diffRow.push(createWinRateDiffCell(getStat(julyStats, 'win_rate'), getStat(juneStats, 'win_rate'), rowStyle));
+                        diffRow.push(createCell("", 's', null, rowStyle));
                         dataToExport.push(diffRow);
 
                         dataToExport.push([]); // Dòng trống phân cách
@@ -2270,6 +2469,7 @@
                     // Header chỉ gồm STT, Tên và các cột trong cấu hình tinh gọn (Bỏ User ID theo yêu cầu)
                     const headers = ["STT", "Tên"];
                     compactExportConfig.forEach(s => headers.push(s.name));
+                    headers.push("Ghi chú");
 
                     dataToExport.push(headers.map(h => createCell(h, 's', null, { font: { bold: true } })));
 
@@ -2303,6 +2503,7 @@
                                 row.push(createCell(diff, 's', null, rowStyle));
                             }
                         });
+                        row.push(createCell(item.note || '', 's', null, { ...rowStyle, font: { color: { rgb: "FFD32F2F" }, italic: true } }));
                         dataToExport.push(row);
                     });
 
@@ -2451,8 +2652,12 @@
             const juneFileUrl = 'https://docs.google.com/spreadsheets/d/1vxjNifx_pgJjDlZ-FK6_Y2NpzKU1ArcV/edit?gid=45285307#gid=45285307';
             const julyFileUrl = 'https://docs.google.com/spreadsheets/d/1nTET8tLm4cYlci3_LWljMXPlTlxuvBOS/edit?gid=823266667#gid=823266667';
 
-            document.getElementById('juneUrl').value = juneFileUrl;
-            document.getElementById('julyUrl').value = julyFileUrl;
+            // SMART: Khôi phục URL từ localStorage nếu có, nếu không dùng mặc định
+            const savedJuneUrl = localStorage.getItem('juneLastUrl');
+            const savedJulyUrl = localStorage.getItem('julyLastUrl');
+
+            document.getElementById('juneUrl').value = savedJuneUrl || juneFileUrl;
+            document.getElementById('julyUrl').value = savedJulyUrl || julyFileUrl;
 
             // Gán sự kiện cho nút chuyển đổi dữ liệu của Biểu đồ So sánh
             // Phương pháp này đảm bảo nút đã tồn tại trên trang trước khi gán sự kiện, giải quyết lỗi ReferenceError
