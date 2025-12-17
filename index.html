@@ -1034,6 +1034,31 @@
             .utility-tabs .tab-btn {
                 flex: 0 0 auto;
             }
+
+            /* === THÊM MỚI: Cố định cột Tên trên mobile === */
+            th.name-column,
+            td.name-column {
+                position: sticky;
+                left: 0;
+                z-index: 2;
+                border-right: 1px solid #e0e0e0;
+                box-shadow: 2px 0 5px -2px rgba(0,0,0,0.1);
+            }
+            th.name-column {
+                z-index: 3; /* Cao hơn các dòng khác */
+            }
+            
+            /* Màu nền cho cột cố định để che nội dung trượt bên dưới */
+            tbody tr td.name-column { background-color: var(--white-color); }
+            tbody tr:nth-child(even) td.name-column { background-color: #f9fafb; }
+            tbody tr:hover td.name-column { background-color: #f0f4f8; }
+            
+            /* Màu nền cho dòng được ghim */
+            tr.pinned-row td.name-column { background-color: #fffbe6 !important; }
+            tr.pinned-row:hover td.name-column { background-color: #fff6cf !important; }
+
+            /* Ẩn chi tiết điểm để tiết kiệm không gian header */
+            .hunt-breakdown { display: none; }
         }
 
         /* Màn hình điện thoại nhỏ */
