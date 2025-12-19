@@ -5443,7 +5443,7 @@
         }
 
         function analyzeHellStats() {
-            const posts = document.querySelectorAll('#telegramFeedContent .telegram-content');
+            const posts = document.querySelectorAll('#telegramFeedContent .telegram-post');
             if (posts.length === 0) {
                 document.getElementById('hellStatsPanel').innerHTML = '<p style="text-align:center; color: #666;">Chưa có dữ liệu để thống kê.</p>';
                 return;
@@ -5498,14 +5498,20 @@
 
             // Khởi tạo object thống kê
             hellMappings.forEach(m => {
-                if (!hellStats[m.name]) hellStats[m.name] = { count: 0, points: [] };
+                if (!hellStats[m.name]) hellStats[m.name] = { count: 0, points: [], times: [] };
             });
             challengeMappings.forEach(m => {
-                if (!challengeStats[m.name]) challengeStats[m.name] = { count: 0, points: [] };
+                if (!challengeStats[m.name]) challengeStats[m.name] = { count: 0, points: [], times: [] };
             });
 
             posts.forEach(post => {
-                const text = post.textContent;
+                const contentDiv = post.querySelector('.telegram-content');
+                const timeDiv = post.querySelector('.telegram-meta');
+                
+                if (!contentDiv) return;
+
+                const text = contentDiv.textContent;
+                const time = timeDiv ? timeDiv.textContent : '';
                 const upperText = text.toUpperCase();
                 
                 // === LOGIC MỚI: Tách biệt 24H Challenge ===
@@ -5515,6 +5521,7 @@
                         if (text.includes(map.key)) {
                             foundChallenge = true;
                             challengeStats[map.name].count++;
+                            challengeStats[map.name].times.push(time);
                             
                             const regex = new RegExp(map.key + "[^0-9]*([0-9,]+)", "i");
                             const match = text.match(regex);
@@ -5531,6 +5538,7 @@
                         if (text.includes(map.key)) {
                             foundInThisPost = true;
                             hellStats[map.name].count++;
+                            hellStats[map.name].times.push(time);
                             
                             const regex = new RegExp(map.key + "[^0-9]*([0-9,]+)", "i");
                             const match = text.match(regex);
@@ -5587,8 +5595,11 @@
                         sumButtonHtml = ` <button style="padding: 2px 6px; font-size: 11px; margin-left: 5px; background-color: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="autoFillAndCalc('${mapKey}', '${totalPoints.toLocaleString('en-US')}')" title="Tính tổng (${totalPoints.toLocaleString('en-US')})">Σ</button>`;
                     }
 
+                    // Tạo chuỗi thời gian để hiển thị trong alert
+                    const timesAlert = data.times.join('\\n');
+
                     html += `<tr>
-                                <td><strong>${name}</strong></td>
+                                <td><strong style="cursor:pointer; color:#2980b9; text-decoration:underline dashed;" onclick="alert('Thời gian xuất hiện [${name}]:\\n${timesAlert}')" title="Bấm để xem thời gian xuất hiện">${name}</strong></td>
                                 <td style="text-align:center; font-weight:bold;">${data.count}</td>
                                 <td style="font-size:12px; color:#555;">${pointsHtml}${sumButtonHtml}</td>
                             </tr>`;
@@ -5634,8 +5645,11 @@
                             sumButtonHtml = ` <button style="padding: 2px 6px; font-size: 11px; margin-left: 5px; background-color: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="autoFillAndCalc('${mapKey}', '${totalPoints.toLocaleString('en-US')}')" title="Tính tổng (${totalPoints.toLocaleString('en-US')})">Σ</button>`;
                         }
 
+                        // Tạo chuỗi thời gian để hiển thị trong alert
+                        const timesAlert = data.times.join('\\n');
+
                         html += `<tr>
-                                    <td><strong>${name}</strong></td>
+                                    <td><strong style="cursor:pointer; color:#9b59b6; text-decoration:underline dashed;" onclick="alert('Thời gian xuất hiện [${name}]:\\n${timesAlert}')" title="Bấm để xem thời gian xuất hiện">${name}</strong></td>
                                     <td style="text-align:center; font-weight:bold;">${data.count}</td>
                                     <td style="font-size:12px; color:#555;">${pointsHtml}${sumButtonHtml}</td>
                                 </tr>`;
