@@ -4190,25 +4190,38 @@
                     <style>
                         body { font-family: Arial, sans-serif; padding: 20px; }
                         h2 { color: #333; }
+                        .controls { margin-bottom: 15px; }
+                        button { padding: 8px 15px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 4px; }
+                        button:hover { background: #1976D2; }
                         table { border-collapse: collapse; width: 100%; font-size: 13px; }
                         th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: middle; }
                         th { background-color: #f2f2f2; position: sticky; top: 0; font-weight: bold; border-bottom: 2px solid #ccc; }
                         tr:nth-child(even) { background-color: #f9f9f9; }
                         tr:hover { background-color: #f1f1f1; }
-                        .present { color: #2e7d32; font-weight: bold; background-color: #e8f5e9; text-align: center; }
+                        .present { color: #2e7d32; font-weight: bold; background-color: #e8f5e9; }
                         .missing { color: #ccc; text-align: center; }
                         .id-col { color: #555; font-family: monospace; }
+                        .hidden { display: none; }
                     </style>
+                    <script>
+                        function toggleId() {
+                            const cols = document.querySelectorAll('.id-col');
+                            cols.forEach(col => col.classList.toggle('hidden'));
+                        }
+                    <\/script>
                 </head>
                 <body>
                     <h2>Kiểm tra chi tiết nguồn dữ liệu</h2>
+                    <div class="controls">
+                        <button onclick="toggleId()">Ẩn/Hiện ID</button>
+                    </div>
                     <p>Tổng số ID duy nhất: <strong>${sortedIds.length}</strong>. Bảng dưới đây hiển thị sự xuất hiện của từng ID trong các file đã tải lên.</p>
                     <table>
                         <thead>
                             <tr>
                                 <th style="width: 50px;">STT</th>
                                 <th>Tên (Tham khảo)</th>
-                                <th>User ID (Gốc)</th>
+                                <th class="id-col">User ID (Gốc)</th>
                                 ${columns.map(col => `<th>${col.header}</th>`).join('')}
                             </tr>
                         </thead>
@@ -4223,8 +4236,8 @@
                     <td class="id-col">${id}</td>
                     ${columns.map(col => {
                         const exists = col.data[id];
-                        // Nếu tồn tại trong file, hiển thị ID đó (hoặc dấu tích). Ở đây hiển thị ID để dễ đối chiếu.
-                        return exists ? `<td class="present">${id}</td>` : `<td class="missing">-</td>`;
+                        // Nếu tồn tại trong file, hiển thị Tên thay vì ID
+                        return exists ? `<td class="present">${exists.name || id}</td>` : `<td class="missing">-</td>`;
                     }).join('')}
                 </tr>`;
             });
