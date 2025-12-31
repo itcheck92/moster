@@ -207,6 +207,24 @@
                 width: 100%;
                 padding: 10px 0;
             }
+            
+            .view-switcher {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        .view-switcher {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 10px;
+        }
+        .view-btn {
+            background: #16213e; border: 1px solid #ff9f43; color: #aaa; padding: 8px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;
+        }
+        .view-btn.active {
+            background: #ff9f43; color: #1a1a2e;
         }
     </style>
 </head>
@@ -225,20 +243,18 @@
             <!-- Nội dung sẽ được tạo bởi JS -->
         </div>
         
-        <!-- Nút bật tắt sơ đồ -->
-        <div class="diagram-btn-container" style="text-align: center; margin-top: 10px;">
-            <button onclick="openDiagram()" style="background: #ff9f43; border: none; padding: 8px 20px; border-radius: 4px; cursor: pointer; color: #1a1a2e; font-weight: bold; font-size: 14px;">
-                🗺️ Xem Sơ Đồ Liên Kết
-            </button>
+        <!-- Bộ chuyển đổi chế độ xem -->
+        <div class="view-switcher diagram-btn-container">
+            <button id="btn-grid" class="view-btn active" onclick="switchView('grid')">📋 Danh Sách</button>
+            <button id="btn-diagram" class="view-btn" onclick="switchView('diagram')">🗺️ Sơ Đồ Liên Kết</button>
         </div>
         <div id="toggle-header-btn" onclick="toggleHeader()">🔼 Thu gọn</div>
     </div>
 
-    <!-- Modal Sơ đồ -->
-    <div id="diagram-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 2000; overflow: auto; padding: 20px; box-sizing: border-box;">
-        <div style="background: #16213e; padding: 20px; border-radius: 8px; max-width: 1200px; margin: 50px auto; position: relative; border: 1px solid #ff9f43;">
-            <span onclick="document.getElementById('diagram-modal').style.display='none'" style="position: absolute; top: 10px; right: 20px; color: white; font-size: 30px; cursor: pointer;">&times;</span>
-            <h2 style="text-align: center; color: #ff9f43; margin-top: 0;">Sơ Đồ Liên Kết Xây Dựng</h2>
+    <!-- Container Sơ đồ (Ẩn mặc định) -->
+    <div id="diagram-view" style="display: none; margin-top: 20px;">
+        <div style="background: #16213e; padding: 20px; border-radius: 8px; border: 1px solid #ff9f43;">
+            <h2 style="text-align: center; color: #ff9f43; margin-top: 0;">Sơ Đồ Phụ Thuộc</h2>
             
             <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 10px;">
                 <button onclick="zoomDiagram(0.2)" style="background: #4CAF50; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">➕ Phóng to</button>
@@ -288,7 +304,6 @@
                 Castle --> Stone
                 Castle --> Food
                 Castle --> Wood
-                Castle --> Prison
                 Castle --> ManaMine
                 Castle --> Moon
 
@@ -298,6 +313,7 @@
                 Prison --> Temple
                 Food --> Manor
                 Wood --> Manor
+                Manor --> Prison
                 Stone --> Barracks
 
                 Barracks --> Infirmary
@@ -313,15 +329,9 @@
                 Soul --> Academy
                 Gym --> Academy
                 Vault --> Academy
-                Manor --> Academy
                 Wall --> Academy
-                Ore --> Academy
                 Market --> Academy
-                Stone --> Academy
-                Food --> Academy
                 Temple --> Academy
-                Workshop --> Academy
-                Prison --> Academy
                 ManaMine --> Academy
 
                 %% Mana Room
@@ -355,7 +365,7 @@
         </div>
     </div>
 
-    <div class="grid-container" id="app">
+    <div class="grid-container" id="app" style="display: grid;">
         </div>
 
 <script>
@@ -443,17 +453,32 @@
     }
 
     let isDiagramRendered = false;
-    async function openDiagram() {
-        document.getElementById('diagram-modal').style.display = 'block';
-        // Chỉ vẽ sơ đồ nếu chưa vẽ lần nào để tối ưu hiệu năng
-        if (!isDiagramRendered) {
-            if (mermaid.run) {
-                await mermaid.run({ nodes: document.querySelectorAll('.mermaid') });
-            } else {
-                // Fallback cho phiên bản cũ nếu có
-                mermaid.init(undefined, document.querySelectorAll('.mermaid'));
+    
+    async function switchView(mode) {
+        const grid = document.getElementById('app');
+        const diagram = document.getElementById('diagram-view');
+        const btnGrid = document.getElementById('btn-grid');
+        const btnDiagram = document.getElementById('btn-diagram');
+
+        if (mode === 'grid') {
+            grid.style.display = 'grid';
+            diagram.style.display = 'none';
+            btnGrid.classList.add('active');
+            btnDiagram.classList.remove('active');
+        } else {
+            grid.style.display = 'none';
+            diagram.style.display = 'block';
+            btnGrid.classList.remove('active');
+            btnDiagram.classList.add('active');
+            
+            if (!isDiagramRendered) {
+                if (mermaid.run) {
+                    await mermaid.run({ nodes: document.querySelectorAll('.mermaid') });
+                } else {
+                    mermaid.init(undefined, document.querySelectorAll('.mermaid'));
+                }
+                isDiagramRendered = true;
             }
-            isDiagramRendered = true;
         }
     }
 
@@ -758,6 +783,28 @@ mỏ mana,,mỏ mana,,4935,,,,,
 
     // Khởi chạy
     parseData();
+
+    // Sắp xếp lại thứ tự hiển thị theo logic sơ đồ liên kết
+    const sortOrder = [
+        "lâu đài",
+        "quặng", "xưởng", "tường thành",
+        "đá", "doanh trại", "bệnh xá",
+        "gỗ", "lúa", "trang viên", "nhà tù", "đền thờ",
+        "hầm chứa", "thương hội",
+        "sứ quán", "tòa hội chiến",
+        "trại quái vật", "đỉnh kỳ bí", "hồn", "phòng tập",
+        "mỏ mana", "xưởng đá trăng",
+        "học viện",
+        "phòng mana",
+        "kỵ binh", "bộ binh", "cung"
+    ];
+
+    buildings.sort((a, b) => {
+        const indexA = sortOrder.indexOf(a.name.toLowerCase());
+        const indexB = sortOrder.indexOf(b.name.toLowerCase());
+        return (indexA === -1 ? 999 : indexA) - (indexB === -1 ? 999 : indexB);
+    });
+
     loadData();
     renderApp();
     
