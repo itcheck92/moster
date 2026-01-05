@@ -199,6 +199,29 @@
         .group-custom {
             background-color: #eaeaea; /* Màu xám nhẹ cho các cột lạ (ví dụ: M) */
         }
+        .group-failed-attacks { background-color: #fadbd8; }
+        .group-traps-destroyed { background-color: #ebdef0; }
+        .group-traps-lost { background-color: #d6eaf8; }
+        .group-turfs-destroyed { background-color: #d5f5e3; }
+        .group-turfs-lost { background-color: #fcf3cf; }
+        .group-familiar-attacks { background-color: #f6ddcc; }
+        .group-attacked-familiars { background-color: #eaecee; }
+        .group-prisoners-executed { background-color: #f2d7d5; }
+        .group-prisoners-escaped { background-color: #d4efdf; }
+        .group-leaders-escaped { background-color: #f9e79f; }
+        .group-leaders-captured { background-color: #e8daef; }
+        .group-leaders-executed { background-color: #f5b7b1; }
+        .group-bounty { background-color: #d5d8dc; }
+        .group-colosseum-rank { background-color: #abebc6; }
+        .group-colosseum-best { background-color: #a3e4d7; }
+        .group-colosseum-won { background-color: #aed6f1; }
+        .group-food { background-color: #f9e79f; }
+        .group-timber { background-color: #edbb99; }
+        .group-stone { background-color: #cfd8dc; }
+        .group-ore { background-color: #d7ccc8; }
+        .group-gold { background-color: #fff9c4; }
+        .group-resources-gathered { background-color: #c8e6c9; }
+        .group-help-sent { background-color: #b3e5fc; }
 
         thead tr:last-child th {
             white-space: nowrap;
@@ -446,25 +469,6 @@
 
         /* === COMPACT VIEW STYLES === */
         /* Hide entire groups not needed in compact view */
-        body.compact-view .group-captured,
-        body.compact-view .group-captured-cell,
-        body.compact-view .group-losses,
-        body.compact-view .group-losses-cell,
-        body.compact-view .group-attacks,
-        body.compact-view .group-attacks-cell,
-        body.compact-view .group-defenses,
-        body.compact-view .group-defenses-cell,
-        body.compact-view .group-victories,
-        body.compact-view .group-victories-cell,
-        body.compact-view .group-win-rate,
-        body.compact-view .group-win-rate-cell,
-        body.compact-view .id-col,
-        body.compact-view .rank-col {
-            /* Ẩn cột ID và Rank */
-            display: none;
-        }
-
-        /* In compact view, hide the month columns for the remaining groups */
         body.compact-view .month-col {
             display: none;
         }
@@ -481,11 +485,6 @@
             font-weight: bold;
             background-color: #f9f9f9;
             text-align: right;
-        }
-
-        body.compact-view .group-troops-killed,
-        body.compact-view .group-troops-killed-cell {
-            display: none;
         }
 
         #updateDataModal {
@@ -670,6 +669,19 @@
             font-weight: bold;
             vertical-align: middle;
         }
+
+        /* Style cho checkbox trong modal chọn cột */
+        .column-checkbox-item {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            border: 1px solid #eee;
+        }
+        .column-checkbox-item:hover {
+            filter: brightness(0.95);
+        }
     </style>
 </head>
 
@@ -774,8 +786,8 @@
                 <div style="display: flex; gap: 5px; margin-top: 5px;">
                     <button onclick="searchTable()">Tìm kiếm</button>
                     <button onclick="showDetailedView()" class="secondary">Xem chi tiết</button>
+                    <button onclick="showColumnSelector()" class="secondary" style="background-color: #9c27b0;">Chọn cột hiển thị</button>
                     <button id="compactViewBtn" onclick="toggleCompactView()" class="tertiary">Tinh gọn</button>
-                    <button onclick="toggleIdColumn()" class="tertiary">Ẩn/Hiện ID</button>
                     <button id="exportPngBtn" onclick="exportToPNGByRange()" class="tertiary">Xuất ảnh theo phạm
                         vi</button>
                     <button onclick="exportToExcel()" class="quaternary">Xuất Excel (Đầy đủ)</button>
@@ -950,6 +962,23 @@
                 </div>
             </div>
         </div>
+        <!-- Column Selector Modal -->
+        <div id="columnSelectorModal" style="display: none; position: fixed; z-index: 10005; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6);">
+            <div style="background-color: #fefefe; margin: 5% auto; padding: 20px; border: 1px solid #888; width: 80%; max-width: 900px; border-radius: 8px;">
+                <h2 style="margin-top: 0;">Chọn cột hiển thị</h2>
+                <div style="margin-bottom: 10px;">
+                    <button onclick="selectAllColumns(true)" class="secondary">Chọn tất cả</button>
+                    <button onclick="selectAllColumns(false)" class="tertiary">Bỏ chọn tất cả</button>
+                </div>
+                <div id="columnSelectorContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; max-height: 60vh; overflow-y: auto; padding: 10px; border: 1px solid #ddd;">
+                    <!-- Checkboxes will be inserted here -->
+                </div>
+                <div style="margin-top: 20px; text-align: right;">
+                    <button onclick="applyColumnSelection()" class="secondary">Áp dụng</button>
+                    <button onclick="closeColumnSelector()" class="tertiary">Đóng</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -966,7 +995,7 @@
         let chartInstance;
         let tempOcrData = null; // Dữ liệu tạm thời từ OCR
         let currentData = [];
-        let showIdColumn = true;
+        let visibleFixedColumns = { userId: true, rank: true };
         window.showMonthlyDataOverall = false; // Track whether to show monthly data or total diff
         let currentSort = { column: 'name', direction: 'asc' };
         let overallChartInstances = []; // Store chart instances for PDF export
@@ -974,6 +1003,7 @@
             june: 6, // Mặc định là tháng 6
             july: 7  // Mặc định là tháng 7
         };
+        let allAvailableStats = []; // Biến lưu tất cả các cột có thể hiển thị
 
         // Hàm tính toán vị trí label cho biểu đồ, hỗ trợ cả biểu đồ ngang và dọc
         // Trả về 'align' value ('start'/'end' cho ngang, 'top'/'bottom' cho dọc)
@@ -1039,7 +1069,30 @@
             { key: 'losses', name: 'Thua', groupClass: 'group-losses', cellClass: 'group-losses-cell' },
             { key: 'successful_attacks', name: 'Tấn công Thành công', groupClass: 'group-attacks', cellClass: 'group-attacks-cell' },
             { key: 'successful_defenses', name: 'Phòng thủ Thành công', groupClass: 'group-defenses', cellClass: 'group-defenses-cell' },
-            { key: 'victories', name: 'Chiến Thắng', groupClass: 'group-victories', cellClass: 'group-victories-cell' }
+            { key: 'victories', name: 'Chiến Thắng', groupClass: 'group-victories', cellClass: 'group-victories-cell' },
+            { key: 'failed_attacks', name: 'Cuộc tấn công thất bại', groupClass: 'group-failed-attacks', cellClass: 'group-failed-attacks-cell' },
+            { key: 'traps_destroyed', name: 'Các Bẫy Đã Phá', groupClass: 'group-traps-destroyed', cellClass: 'group-traps-destroyed-cell' },
+            { key: 'traps_lost', name: 'Số bẫy tổn thất', groupClass: 'group-traps-lost', cellClass: 'group-traps-lost-cell' },
+            { key: 'turfs_destroyed', name: 'Lãnh địa bị phá hủy', groupClass: 'group-turfs-destroyed', cellClass: 'group-turfs-destroyed-cell' },
+            { key: 'turfs_lost', name: 'Lãnh địa bị tổn thất', groupClass: 'group-turfs-lost', cellClass: 'group-turfs-lost-cell' },
+            { key: 'familiar_attacks_launched', name: 'Phát động cộng sự tấn công', groupClass: 'group-familiar-attacks', cellClass: 'group-familiar-attacks-cell' },
+            { key: 'attacked_by_enemy_familiars', name: 'Bị tấn công bởi cộng sự kẻ thù', groupClass: 'group-attacked-familiars', cellClass: 'group-attacked-familiars-cell' },
+            { key: 'prisoners_executed', name: 'Tù nhân đã hành hình', groupClass: 'group-prisoners-executed', cellClass: 'group-prisoners-executed-cell' },
+            { key: 'prisoners_escaped', name: 'Tù nhân đã trốn thoát', groupClass: 'group-prisoners-escaped', cellClass: 'group-prisoners-escaped-cell' },
+            { key: 'leaders_escaped', name: 'Chỉ huy đã trốn thoát', groupClass: 'group-leaders-escaped', cellClass: 'group-leaders-escaped-cell' },
+            { key: 'leaders_captured', name: 'Chỉ huy đã bị bắt', groupClass: 'group-leaders-captured', cellClass: 'group-leaders-captured-cell' },
+            { key: 'leaders_executed', name: 'Các chỉ huy đã hành hình', groupClass: 'group-leaders-executed', cellClass: 'group-leaders-executed-cell' },
+            { key: 'bounty_collected', name: 'Đã thu thập tiền thưởng', groupClass: 'group-bounty', cellClass: 'group-bounty-cell' },
+            { key: 'current_colosseum_rank', name: 'Hạng hiện tại', groupClass: 'group-colosseum-rank', cellClass: 'group-colosseum-rank-cell' },
+            { key: 'best_colosseum_rank', name: 'Hạng tốt nhất', groupClass: 'group-colosseum-best', cellClass: 'group-colosseum-best-cell' },
+            { key: 'colosseum_battles_won', name: 'Số trận đã thắng', groupClass: 'group-colosseum-won', cellClass: 'group-colosseum-won-cell' },
+            { key: 'food_sent', name: 'Lúa', groupClass: 'group-food', cellClass: 'group-food-cell' },
+            { key: 'timber_sent', name: 'Gỗ', groupClass: 'group-timber', cellClass: 'group-timber-cell' },
+            { key: 'stone_sent', name: 'Đá', groupClass: 'group-stone', cellClass: 'group-stone-cell' },
+            { key: 'ore_sent', name: 'Quặng', groupClass: 'group-ore', cellClass: 'group-ore-cell' },
+            { key: 'gold_sent', name: 'Vàng', groupClass: 'group-gold', cellClass: 'group-gold-cell' },
+            { key: 'total_resources_gathered', name: 'Tổng số RSS đã thu', groupClass: 'group-resources-gathered', cellClass: 'group-resources-gathered-cell' },
+            { key: 'help_sent', name: 'Hỗ trợ đã gửi', groupClass: 'group-help-sent', cellClass: 'group-help-sent-cell' }
         ];
         // Biến lưu cấu hình hiện tại (sẽ thay đổi dựa trên file Excel)
         let activeStatsConfig = [...DEFAULT_STATS_CONFIG];
@@ -1369,7 +1422,30 @@
                 "losses": "losses", "thua": "losses",
                 "successful attacks": "successful_attacks", "tấn công thành công": "successful_attacks",
                 "successful defenses": "successful_defenses", "phòng thủ thành công": "successful_defenses",
-                "victories": "victories", "chiến thắng": "victories"
+                "victories": "victories", "chiến thắng": "victories",
+                "failed attacks": "failed_attacks", "cuộc tấn công thất bại": "failed_attacks", "cuộc cột tấn công thất bại": "failed_attacks",
+                "traps destroyed": "traps_destroyed", "các bẫy đã phá": "traps_destroyed",
+                "traps lost": "traps_lost", "số bẫy tổn thất": "traps_lost",
+                "turfs destroyed": "turfs_destroyed", "lãnh địa bị phá hủy": "turfs_destroyed",
+                "turfs lost": "turfs_lost", "lãnh địa bị tổn thất": "turfs_lost",
+                "familiar attacks launched": "familiar_attacks_launched", "phát động cộng sự tấn công": "familiar_attacks_launched",
+                "attacked by enemy familiars": "attacked_by_enemy_familiars", "bị tấn công bởi cộng sự kẻ thù": "attacked_by_enemy_familiars",
+                "prisoners executed": "prisoners_executed", "tù nhân đã hành hình": "prisoners_executed",
+                "prisoners escaped": "prisoners_escaped", "tù nhân đã trốn thoát": "prisoners_escaped",
+                "leaders escaped": "leaders_escaped", "chỉ huy đã trốn thoát": "leaders_escaped",
+                "leaders captured": "leaders_captured", "chỉ huy đã bị bắt": "leaders_captured",
+                "leaders executed": "leaders_executed", "các chỉ huy đã hành hình": "leaders_executed",
+                "bounty collected": "bounty_collected", "đã thu thập tiền thưởng": "bounty_collected",
+                "current colosseum rank": "current_colosseum_rank", "hạng hiện tại": "current_colosseum_rank",
+                "best colosseum rank": "best_colosseum_rank", "hạng tốt nhất": "best_colosseum_rank",
+                "colosseum battles won": "colosseum_battles_won", "số trận đã thắng": "colosseum_battles_won",
+                "food sent": "food_sent", "lúa": "food_sent",
+                "timber sent": "timber_sent", "gỗ": "timber_sent",
+                "stone sent": "stone_sent", "đá": "stone_sent",
+                "ore sent": "ore_sent", "quặng": "ore_sent",
+                "gold sent": "gold_sent", "vàng": "gold_sent",
+                "total resources gathered": "total_resources_gathered", "tổng số rss đã thu": "total_resources_gathered",
+                "help sent": "help_sent", "hỗ trợ đã gửi": "help_sent"
             };
 
             // Xác định index của các cột
@@ -1486,23 +1562,23 @@
                     collectKeys(julyData);
                     collectKeys(intermediateData); // Quét cả key của file trung gian
 
-                    // 2. Xây dựng activeStatsConfig
-                    activeStatsConfig = [];
+                    // 2. Xây dựng allAvailableStats (thay vì activeStatsConfig trực tiếp)
+                    allAvailableStats = [];
                     const missingStandardKeys = [];
 
                     // Kiểm tra các cột chuẩn
                     DEFAULT_STATS_CONFIG.forEach(stat => {
+                        allAvailableStats.push(stat); // Thêm vào danh sách có sẵn
                         if (allKeys.has(stat.key)) {
-                            activeStatsConfig.push(stat);
-                            allKeys.delete(stat.key); // Đã xử lý
+                            allKeys.delete(stat.key);
                         } else {
                             missingStandardKeys.push(stat.name);
                         }
                     });
 
-                    // Các key còn lại trong allKeys là các cột lạ (Custom Columns)
+                    // Các key còn lại là cột lạ
                     allKeys.forEach(customKey => {
-                        activeStatsConfig.push({
+                        allAvailableStats.push({
                             key: customKey,
                             name: customKey, // Tên hiển thị là tên cột gốc
                             groupClass: 'group-custom',
@@ -1514,13 +1590,13 @@
                     const warningBox = document.getElementById('columnWarning');
                     if (missingStandardKeys.length > 0) {
                         warningBox.style.display = 'block';
-                        warningBox.innerHTML = `<strong>Lưu ý:</strong> Các cột chuẩn sau không tìm thấy trong file Excel và đã bị ẩn: ${missingStandardKeys.join(', ')}.`;
+                        warningBox.innerHTML = `<strong>Lưu ý:</strong> Các cột chuẩn sau không tìm thấy dữ liệu trong file Excel (sẽ hiển thị No data): ${missingStandardKeys.join(', ')}.`;
                     } else {
                         warningBox.style.display = 'none';
                     }
 
-                    // 4. Vẽ lại Header bảng
-                    renderTableHeaders();
+                    // KHÔNG vẽ header ngay ở đây nữa, sẽ vẽ trong applyColumnSelection
+                    // renderTableHeaders();
 
                     Array.from(allUserIds).forEach(userId => {
                         const juneStats = juneData[userId];
@@ -1610,8 +1686,9 @@
                             note: note // Lưu ghi chú
                         };
 
-                        // Tính toán tất cả các trường chênh lệch (Diff)
-                        activeStatsConfig.forEach(stat => {
+                        // Tính toán tất cả các trường chênh lệch (Diff) cho TẤT CẢ các cột có sẵn
+                        // Để khi bật/tắt cột không cần tính lại
+                        allAvailableStats.forEach(stat => {
                             dataItem[`${stat.key}Diff`] = calculateDifference(endStats?.[stat.key], startStats?.[stat.key]);
                         });
                         dataItem['win_rateDiff'] = getWinRateDiffValue(endStats?.win_rate, startStats?.win_rate);
@@ -1621,8 +1698,14 @@
                         });
                     });
 
-                    // Sắp xếp theo tên mặc định thay vì áp dụng bộ lọc ưu tiên ngay
-                    sortTable('name', 'asc');
+                    // Khởi tạo và áp dụng bộ chọn cột (sẽ tự động render bảng)
+                    initColumnSelector();
+                    applyColumnSelection();
+
+                    // Mặc định chuyển sang chế độ tinh gọn sau khi tải dữ liệu
+                    if (!document.body.classList.contains('compact-view')) {
+                        toggleCompactView();
+                    }
 
                 } catch (error) {
                     console.error('Lỗi khi so sánh:', error);
@@ -1641,19 +1724,22 @@
             const tr1 = document.createElement('tr');
             
             // Các cột cố định
-            const fixedHeaders = [
+            let fixedHeaders = [
                 { text: 'STT', key: 'stt', class: '' },
                 { text: 'Tên', key: 'name', class: '' },
-                { text: 'User ID', key: 'userId', class: 'id-col' },
-                { text: 'Rank', key: 'rank', class: 'info-group-separator rank-col' }
             ];
+            if (visibleFixedColumns.userId) fixedHeaders.push({ text: 'User ID', key: 'userId', class: 'id-col' });
+            if (visibleFixedColumns.rank) fixedHeaders.push({ text: 'Rank', key: 'rank', class: 'rank-col' });
+
+            // Thêm đường phân cách cho cột cố định cuối cùng
+            if (fixedHeaders.length > 2) fixedHeaders[fixedHeaders.length - 1].class += ' info-group-separator';
 
             fixedHeaders.forEach(h => {
                 const th = document.createElement('th');
                 th.rowSpan = 2;
                 th.className = `sortable ${h.class}`;
                 th.dataset.sortKey = h.key;
-                th.innerHTML = `${h.text}<span class="sort-icon"></span>`;
+                th.innerHTML = `${h.text}<span class="sort-icon"></span>`; // Bỏ sort cho STT
                 tr1.appendChild(th);
             });
 
@@ -1781,6 +1867,7 @@
                 const { userId, name, rank, juneStats, julyStats, hasBothData, isMissed, note } = item;
 
                 const row = document.createElement('tr');
+                row.dataset.userid = userId; // Lưu userId vào dataset để dùng cho export
                 if (!hasBothData) row.classList.add('missing-data-row');
                 if (isMissed) row.classList.add('missed-row'); // SMART: Thêm class tô màu vàng
 
@@ -1810,11 +1897,11 @@
             <td class="group-win-rate-cell diff-col">${winRateDiff}</td>
         `;
 
-                row.innerHTML = `
-            <td>${index + 1}</td>
-            <td>${displayName}</td>
-            <td class="id-col">${userId}</td>
-            <td class="rank-col">${rank}</td>
+                let rowHtml = `<td>${index + 1}</td><td>${displayName}</td>`;
+                if (visibleFixedColumns.userId) rowHtml += `<td class="id-col">${userId}</td>`;
+                if (visibleFixedColumns.rank) rowHtml += `<td class="rank-col">${rank}</td>`;
+
+                row.innerHTML = rowHtml + `
             ${statsHtml}
             ${winRateHtml}
             <td class="note-col" style="font-size: 11px; color: #d32f2f; font-style: italic;">${note || ''}</td>
@@ -1926,19 +2013,6 @@
             displaySortedData(filteredData);
         }
 
-        function toggleIdColumn() {
-            const idCols = document.querySelectorAll('.id-col');
-            showIdColumn = !showIdColumn;
-
-            idCols.forEach(col => {
-                if (showIdColumn) {
-                    col.classList.remove('hidden-col');
-                } else {
-                    col.classList.add('hidden-col');
-                }
-            });
-        }
-
         function hideDetailedView() {
             const container = document.getElementById('detailedViewContainer');
             if (container) container.style.display = 'none';
@@ -1962,9 +2036,10 @@
             const juneMonth = selectedMonths.june;
             const julyMonth = selectedMonths.july;
 
-            // Tạo mapping từ activeStatsConfig
+            // Tạo mapping từ allAvailableStats để hiển thị đầy đủ tất cả các chỉ số (kể cả cột bị ẩn)
             const statMapping = {};
-            activeStatsConfig.forEach(s => statMapping[s.key] = s.name);
+            const configSource = (allAvailableStats && allAvailableStats.length > 0) ? allAvailableStats : activeStatsConfig;
+            configSource.forEach(s => statMapping[s.key] = s.name);
             statMapping['win_rate'] = "Tỉ Lệ Chiến Thắng";
             
             let tableBodyHtml = '';
@@ -2076,6 +2151,12 @@
                 // Ẩn các nút bấm trong bản sao để ảnh đẹp hơn
                 const buttons = clone.querySelectorAll('button');
                 buttons.forEach(btn => btn.style.display = 'none');
+
+                // FIX: Loại bỏ sticky header trong bản sao để tránh lỗi hiển thị khi chụp
+                const thElements = clone.querySelectorAll('th');
+                thElements.forEach(th => {
+                    th.style.position = 'static';
+                });
 
                 // Thêm bản sao vào body để html2canvas có thể chụp
                 document.body.appendChild(clone);
@@ -2263,7 +2344,7 @@
                     const tableRows = document.getElementById('tableBody').getElementsByTagName('tr');
                     for (const row of tableRows) {
                         if (row.style.display !== 'none') {
-                            const userId = row.cells[2].innerText;
+                            const userId = row.dataset.userid;
                             const dataItem = currentData.find(item => item.userId === userId);
                             if (dataItem) visibleData.push(dataItem);
                         }
@@ -2478,7 +2559,7 @@
                     for (const row of tableRows) {
                         if (row.style.display !== 'none') {
                             const stt = row.cells[0].innerText;
-                            const userId = row.cells[2].innerText; // User ID vẫn ở cột 3 dù có thể bị ẩn
+                            const userId = row.dataset.userid;
                             const dataItem = currentData.find(item => item.userId === userId);
                             if (dataItem) {
                                 visibleData.push({
@@ -3255,7 +3336,30 @@
                 "Successful Attacks": "Tấn công Thành công",
                 "Phòng thủ thành công": "Phòng thủ Thành công",
                 "Victories": "Chiến Thắng",
-                "Win Rate": "Tỉ Lệ Chiến Thắng"
+                "Win Rate": "Tỉ Lệ Chiến Thắng",
+                "Failed Attacks": "Cuộc tấn công thất bại",
+                "Traps Destroyed": "Các Bẫy Đã Phá",
+                "Traps Lost": "Số bẫy tổn thất",
+                "Turfs Destroyed": "Lãnh địa bị phá hủy",
+                "Turfs Lost": "Lãnh địa bị tổn thất",
+                "Familiar Attacks Launched": "Phát động cộng sự tấn công",
+                "Attacked By Enemy Familiars": "Bị tấn công bởi cộng sự kẻ thù",
+                "Prisoners Executed": "Tù nhân đã hành hình",
+                "Prisoners Escaped": "Tù nhân đã trốn thoát",
+                "Leaders Escaped": "Chỉ huy đã trốn thoát",
+                "Leaders Captured": "Chỉ huy đã bị bắt",
+                "Leaders Executed": "Các chỉ huy đã hành hình",
+                "Bounty Collected": "Đã thu thập tiền thưởng",
+                "Current Colosseum Rank": "Hạng hiện tại",
+                "Best Colosseum Rank": "Hạng tốt nhất",
+                "Colosseum Battles Won": "Số trận đã thắng",
+                "Food Sent": "Lúa",
+                "Timber Sent": "Gỗ",
+                "Stone Sent": "Đá",
+                "Ore Sent": "Quặng",
+                "Gold Sent": "Vàng",
+                "Total Resources Gathered": "Tổng số RSS đã thu",
+                "Help Sent": "Hỗ trợ đã gửi"
             };
 
             // Tạo tiêu đề bảng
@@ -3807,7 +3911,30 @@
                 { key: 'successful_attacks', label: 'Tấn công Thành công' },
                 { key: 'successful_defenses', label: 'Phòng thủ Thành công' },
                 { key: 'victories', label: 'Chiến Thắng' },
-                { key: 'win_rate', label: 'Tỉ Lệ Chiến Thắng' }
+                { key: 'win_rate', label: 'Tỉ Lệ Chiến Thắng' },
+                { key: 'failed_attacks', label: 'Cuộc tấn công thất bại' },
+                { key: 'traps_destroyed', label: 'Các Bẫy Đã Phá' },
+                { key: 'traps_lost', label: 'Số bẫy tổn thất' },
+                { key: 'turfs_destroyed', label: 'Lãnh địa bị phá hủy' },
+                { key: 'turfs_lost', label: 'Lãnh địa bị tổn thất' },
+                { key: 'familiar_attacks_launched', label: 'Phát động cộng sự tấn công' },
+                { key: 'attacked_by_enemy_familiars', label: 'Bị tấn công bởi cộng sự kẻ thù' },
+                { key: 'prisoners_executed', label: 'Tù nhân đã hành hình' },
+                { key: 'prisoners_escaped', label: 'Tù nhân đã trốn thoát' },
+                { key: 'leaders_escaped', label: 'Chỉ huy đã trốn thoát' },
+                { key: 'leaders_captured', label: 'Chỉ huy đã bị bắt' },
+                { key: 'leaders_executed', label: 'Các chỉ huy đã hành hình' },
+                { key: 'bounty_collected', label: 'Đã thu thập tiền thưởng' },
+                { key: 'current_colosseum_rank', label: 'Hạng hiện tại' },
+                { key: 'best_colosseum_rank', label: 'Hạng tốt nhất' },
+                { key: 'colosseum_battles_won', label: 'Số trận đã thắng' },
+                { key: 'food_sent', label: 'Lúa' },
+                { key: 'timber_sent', label: 'Gỗ' },
+                { key: 'stone_sent', label: 'Đá' },
+                { key: 'ore_sent', label: 'Quặng' },
+                { key: 'gold_sent', label: 'Vàng' },
+                { key: 'total_resources_gathered', label: 'Tổng số RSS đã thu' },
+                { key: 'help_sent', label: 'Hỗ trợ đã gửi' }
             ];
 
             statDisplayOrder.forEach(stat => {
@@ -3954,7 +4081,13 @@
             const excelColumnKeys = [
                 'name', 'userId', 'rank', 'might', 'kills', 'enemies_captured', 'enemies_destroyed',
                 'enemy_wounded', 'troops_killed', 'troops_lost', 'troops_wounded', 'losses',
-                'successful_attacks', 'successful_defenses', 'victories', 'win_rate'
+                'successful_attacks', 'successful_defenses', 'victories', 'win_rate',
+                'failed_attacks', 'traps_destroyed', 'traps_lost', 'turfs_destroyed', 'turfs_lost',
+                'familiar_attacks_launched', 'attacked_by_enemy_familiars', 'prisoners_executed',
+                'prisoners_escaped', 'leaders_escaped', 'leaders_captured', 'leaders_executed',
+                'bounty_collected', 'current_colosseum_rank', 'best_colosseum_rank',
+                'colosseum_battles_won', 'food_sent', 'timber_sent',
+                'stone_sent', 'ore_sent', 'gold_sent', 'total_resources_gathered', 'help_sent'
             ];
             const textKeys = ['name', 'userId', 'rank', 'win_rate'];
 
@@ -4054,6 +4187,29 @@
             stats.enemy_wounded = extractValue(['Quân Địch Bì Thươn', 'Quân Địch Bị Thương', 'Enemy Troops Wounded']);
             stats.enemies_captured = extractValue(['Kẻ Thù Bị Bắt', 'Enemies captured']);
             stats.enemies_destroyed = extractValue(['Kẻ thù đã tiêu diệt (Sức mạnh)', 'Kẻ Thù Tiêu Diệt', 'Enemies Destroyed Might']);
+            stats.failed_attacks = extractValue(['Cuộc tấn công thất bại', 'Failed Attacks']);
+            stats.traps_destroyed = extractValue(['Các Bẫy Đã Phá', 'Traps Destroyed']);
+            stats.traps_lost = extractValue(['Số bẫy tổn thất', 'Traps Lost']);
+            stats.turfs_destroyed = extractValue(['Lãnh địa bị phá hủy', 'Turfs Destroyed']);
+            stats.turfs_lost = extractValue(['Lãnh địa bị tổn thất', 'Turfs Lost']);
+            stats.familiar_attacks_launched = extractValue(['Phát động cộng sự tấn công', 'Familiar Attacks Launched']);
+            stats.attacked_by_enemy_familiars = extractValue(['Bị tấn công bởi cộng sự kẻ thù', 'Attacked By Enemy Familiars']);
+            stats.prisoners_executed = extractValue(['Tù nhân đã hành hình', 'Prisoners Executed']);
+            stats.prisoners_escaped = extractValue(['Tù nhân đã trốn thoát', 'Prisoners Escaped']);
+            stats.leaders_escaped = extractValue(['Chỉ huy đã trốn thoát', 'Leaders Escaped']);
+            stats.leaders_captured = extractValue(['Chỉ huy đã bị bắt', 'Leaders Captured']);
+            stats.leaders_executed = extractValue(['Các chỉ huy đã hành hình', 'Leaders Executed']);
+            stats.bounty_collected = extractValue(['Đã thu thập tiền thưởng', 'Bounty Collected']);
+            stats.current_colosseum_rank = extractValue(['Hạng hiện tại', 'Current Colosseum Rank']);
+            stats.best_colosseum_rank = extractValue(['Hạng tốt nhất', 'Best Colosseum Rank']);
+            stats.colosseum_battles_won = extractValue(['Số trận đã thắng', 'Colosseum Battles Won']);
+            stats.food_sent = extractValue(['Lúa', 'Food Sent']);
+            stats.timber_sent = extractValue(['Gỗ', 'Timber Sent']);
+            stats.stone_sent = extractValue(['Đá', 'Stone Sent']);
+            stats.ore_sent = extractValue(['Quặng', 'Ore Sent']);
+            stats.gold_sent = extractValue(['Vàng', 'Gold Sent']);
+            stats.total_resources_gathered = extractValue(['Tổng số RSS đã thu', 'Total Resources Gathered']);
+            stats.help_sent = extractValue(['Hỗ trợ đã gửi', 'Help Sent']);
 
             // 3. Xử lý riêng cho Tỉ lệ thắng (dạng chuỗi %)
             const winRateRegex = /(?:Tỉ Lệ Chiến Thắng|Win Rate)\s+([\d.,]+%)/i;
@@ -4257,6 +4413,78 @@
             } else {
                 alert("Vui lòng cho phép mở popup để xem bảng kiểm tra.");
             }
+        }
+
+        // --- CÁC HÀM CHO MODAL CHỌN CỘT ---
+        function showColumnSelector() {
+            document.getElementById('columnSelectorModal').style.display = 'block';
+        }
+
+        function closeColumnSelector() {
+            document.getElementById('columnSelectorModal').style.display = 'none';
+        }
+
+        function initColumnSelector() {
+            const container = document.getElementById('columnSelectorContainer');
+            container.innerHTML = '';
+
+            // Helper to create checkbox
+            const createCheckbox = (key, name, checked, groupClass = '') => {
+                const wrapper = document.createElement('label');
+                wrapper.className = `column-checkbox-item ${groupClass}`;
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = key;
+                checkbox.checked = checked;
+                const text = document.createElement('span');
+                text.textContent = name;
+                wrapper.appendChild(checkbox);
+                wrapper.appendChild(text);
+                container.appendChild(wrapper);
+            };
+
+            // Lấy trạng thái đã lưu của các cột
+            const savedVisibleColumns = JSON.parse(localStorage.getItem('visibleColumns')) || {};
+
+            // Cột cố định
+            createCheckbox('userId', 'User ID', savedVisibleColumns.userId ?? true);
+            createCheckbox('rank', 'Rank', savedVisibleColumns.rank ?? true);
+
+            allAvailableStats.forEach(stat => {
+                // Mặc định là true nếu chưa có trong localStorage
+                const isChecked = savedVisibleColumns[stat.key] ?? true;
+                createCheckbox(stat.key, stat.name, isChecked, stat.groupClass);
+            });
+        }
+
+        function selectAllColumns(checked) {
+            const checkboxes = document.querySelectorAll('#columnSelectorContainer input[type="checkbox"]');
+            checkboxes.forEach(cb => cb.checked = checked);
+        }
+
+        function applyColumnSelection() {
+            const checkboxes = document.querySelectorAll('#columnSelectorContainer input[type="checkbox"]');
+            const selectedKeys = new Set();
+            checkboxes.forEach(cb => {
+                if (cb.checked) selectedKeys.add(cb.value);
+            });
+
+            // Cập nhật trạng thái hiển thị cột cố định
+            visibleFixedColumns.userId = selectedKeys.has('userId');
+            visibleFixedColumns.rank = selectedKeys.has('rank');
+
+            // Cập nhật activeStatsConfig dựa trên lựa chọn
+            activeStatsConfig = allAvailableStats.filter(stat => selectedKeys.has(stat.key));
+
+            // Lưu lựa chọn vào localStorage
+            const columnsToSave = {};
+            checkboxes.forEach(cb => columnsToSave[cb.value] = cb.checked);
+            localStorage.setItem('visibleColumns', JSON.stringify(columnsToSave));
+
+            // Vẽ lại bảng
+            renderTableHeaders();
+            sortTable(currentSort.column, currentSort.direction); // Sắp xếp và hiển thị lại body
+            closeColumnSelector();
         }
     </script>
 </body>
