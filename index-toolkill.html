@@ -970,7 +970,7 @@
                     <button onclick="selectAllColumns(true)" class="secondary">Chọn tất cả</button>
                     <button onclick="selectAllColumns(false)" class="tertiary">Bỏ chọn tất cả</button>
                 </div>
-                <div id="columnSelectorContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; max-height: 60vh; overflow-y: auto; padding: 10px; border: 1px solid #ddd;">
+                <div id="columnSelectorContainer" style="max-height: 60vh; overflow-y: auto; padding: 10px; border: 1px solid #ddd;">
                     <!-- Checkboxes will be inserted here -->
                 </div>
                 <div style="margin-top: 20px; text-align: right;">
@@ -1601,6 +1601,14 @@
                     Array.from(allUserIds).forEach(userId => {
                         const juneStats = juneData[userId];
                         const julyStats = julyData[userId];
+
+                        // Tính điểm hiện diện (Presence Score) để sắp xếp theo độ đầy đủ dữ liệu
+                        let presenceScore = 0;
+                        if (juneStats) presenceScore++;
+                        if (julyStats) presenceScore++;
+                        intermediateCollections.forEach(col => {
+                            if (col.data[userId]) presenceScore++;
+                        });
                         
                         // SMART: Tìm điểm đầu và điểm cuối trong các file trung gian cho user này
                         let interFirst = null;
@@ -1683,7 +1691,8 @@
                             julyStats: endStats,   // Gán vào slot hiển thị bên phải
                             hasBothData: !!(startStats && endStats),
                             isMissed: isMissed,
-                            note: note // Lưu ghi chú
+                            note: note, // Lưu ghi chú
+                            presenceScore: presenceScore // Lưu điểm hiện diện
                         };
 
                         // Tính toán tất cả các trường chênh lệch (Diff) cho TẤT CẢ các cột có sẵn
@@ -1862,6 +1871,11 @@
             const juneColumns = document.querySelectorAll('.month-col-june');
             juneColumns.forEach(column => column.style.display = juneDataExists ? '' : 'none');
 
+            // Tính tổng chênh lệch Kills của toàn bộ danh sách để tính phần trăm (Share of Voice)
+            const totalKillsDiff = currentData.reduce((sum, item) => {
+                const diff = calculateDifference(item.julyStats?.kills, item.juneStats?.kills);
+                return sum + (diff > 0 ? diff : 0);
+            }, 0);
 
             sortedData.forEach((item, index) => {
                 const { userId, name, rank, juneStats, julyStats, hasBothData, isMissed, note } = item;
@@ -1882,10 +1896,24 @@
                 activeStatsConfig.forEach(stat => {
                     const juneValue = juneStats?.[stat.key];
                     const julyValue = julyStats?.[stat.key];
+                    
+                    let diffContent = formatDifference(juneValue, julyValue, selectedMonths.june, selectedMonths.july);
+                    let cellStyle = '';
+
+                    // Thêm hiển thị phần trăm đóng góp cho chỉ số Kills
+                    if (stat.key === 'kills') {
+                        const diff = calculateDifference(julyValue, juneValue);
+                        if (diff > 0 && totalKillsDiff > 0) {
+                            const percent = (diff / totalKillsDiff) * 100;
+                            diffContent += `<div style="font-size: 11px; color: #555; margin-top: 2px;">(${percent.toFixed(2)}%)</div>`;
+                            cellStyle = `style="background: linear-gradient(90deg, rgba(76, 175, 80, 0.2) ${percent}%, transparent ${percent}%)"`;
+                        }
+                    }
+
                     statsHtml += `
                 <td class="${stat.cellClass} month-col">${formatNumber(juneValue, selectedMonths.june)}</td>
                 <td class="${stat.cellClass} month-col">${formatNumber(julyValue, selectedMonths.july)}</td>
-                <td class="${stat.cellClass} diff-col">${formatDifference(juneValue, julyValue, selectedMonths.june, selectedMonths.july)}</td>
+                <td class="${stat.cellClass} diff-col" ${cellStyle}>${diffContent}</td>
             `;
                 });
 
@@ -2036,6 +2064,12 @@
             const juneMonth = selectedMonths.june;
             const julyMonth = selectedMonths.july;
 
+            // Tính tổng chênh lệch Kills của toàn bộ danh sách để tính phần trăm
+            const totalKillsDiff = currentData.reduce((sum, item) => {
+                const diff = calculateDifference(item.julyStats?.kills, item.juneStats?.kills);
+                return sum + ((diff !== null && diff > 0) ? diff : 0);
+            }, 0);
+
             // Tạo mapping từ allAvailableStats để hiển thị đầy đủ tất cả các chỉ số (kể cả cột bị ẩn)
             const statMapping = {};
             const configSource = (allAvailableStats && allAvailableStats.length > 0) ? allAvailableStats : activeStatsConfig;
@@ -2048,16 +2082,26 @@
                 const juneValue = juneStats ? juneStats[key] : undefined;
                 const julyValue = julyStats ? julyStats[key] : undefined;
 
-                const diffHtml = (key === 'win_rate')
+                let diffHtml = (key === 'win_rate')
                     ? compareWinRates(julyValue, juneValue)
                     : formatDifference(juneValue, julyValue, juneMonth, julyMonth);
+
+                let cellStyle = '';
+                if (key === 'kills') {
+                    const diff = calculateDifference(julyValue, juneValue);
+                    if (diff !== null && diff > 0 && totalKillsDiff > 0) {
+                        const percent = (diff / totalKillsDiff) * 100;
+                        diffHtml += `<div style="font-size: 11px; color: #555; margin-top: 2px;">(${percent.toFixed(2)}%)</div>`;
+                        cellStyle = `style="background: linear-gradient(90deg, rgba(76, 175, 80, 0.2) ${percent}%, transparent ${percent}%)"`;
+                    }
+                }
 
                 tableBodyHtml += `
             <tr>
                 <td class="stat-name">${statName}</td>
                 <td style="text-align: right;">${key === 'win_rate' ? (juneValue || `<span class="no-data">No data ${juneMonth}</span>`) : formatNumber(juneValue, juneMonth)}</td>
                 <td style="text-align: right;">${key === 'win_rate' ? (julyValue || `<span class="no-data">No data ${julyMonth}</span>`) : formatNumber(julyValue, julyMonth)}</td>
-                <td style="text-align: right;">${diffHtml}</td>
+                <td style="text-align: right;" ${cellStyle}>${diffHtml}</td>
             </tr>
         `;
             }
@@ -2355,6 +2399,12 @@
                         throw new Error("No visible data");
                     }
 
+                    // Tính tổng Kills Diff để tính %
+                    const totalKillsDiff = visibleData.reduce((sum, item) => {
+                        const diff = calculateDifference(item.julyStats?.kills, item.juneStats?.kills);
+                        return sum + ((diff !== null && diff > 0) ? diff : 0);
+                    }, 0);
+
                     // --- Các hàm tiện ích để tạo ô trong Excel ---
                     const createCell = (value, type = 's', format = null, style = {}, isError = false) => {
                         const defaultFont = { name: 'Times New Roman', sz: 12 };
@@ -2410,7 +2460,10 @@
                     });
 
                     const headers = ["Loại Dữ Liệu", "Tên", "User ID", "Rank"];
-                    fullExportConfig.forEach(s => headers.push(s.name));
+                    fullExportConfig.forEach(s => {
+                        headers.push(s.name);
+                        if (s.key === 'kills') headers.push("Phần Trăm Kill");
+                    });
                     headers.push("Tỉ Lệ Chiến Thắng");
                     headers.push("Date");
 
@@ -2466,7 +2519,10 @@
                         const juneRow = [ 
                             createCell("", 's', null, rowStyle), createCell(name, 's', null, rowStyle), createCell(userId, 's', null, rowStyle), createCell(rank, 's', null, rowStyle),
                         ];
-                        fullExportConfig.forEach(s => juneRow.push(createNumericCell(getStat(juneStats, s.key), selectedMonths.june, rowStyle)));
+                        fullExportConfig.forEach(s => {
+                            juneRow.push(createNumericCell(getStat(juneStats, s.key), selectedMonths.june, rowStyle));
+                            if (s.key === 'kills') juneRow.push(createCell("", 's', null, rowStyle));
+                        });
                         juneRow.push(createCell(getStat(juneStats, 'win_rate') || '0%', 's', null, rowStyle));
                         juneRow.push(createCell(note || '', 's', null, { ...rowStyle, font: { color: { rgb: "FFD32F2F" }, italic: true } }));
                         dataToExport.push(juneRow);
@@ -2475,7 +2531,10 @@
                         const julyRow = [
                             createCell("", 's', null, rowStyle), createCell(name, 's', null, rowStyle), createCell(userId, 's', null, rowStyle), createCell(rank, 's', null, rowStyle),
                         ];
-                        fullExportConfig.forEach(s => julyRow.push(createNumericCell(getStat(julyStats, s.key), selectedMonths.july, rowStyle)));
+                        fullExportConfig.forEach(s => {
+                            julyRow.push(createNumericCell(getStat(julyStats, s.key), selectedMonths.july, rowStyle));
+                            if (s.key === 'kills') julyRow.push(createCell("", 's', null, rowStyle));
+                        });
                         julyRow.push(createCell(getStat(julyStats, 'win_rate') || '0%', 's', null, rowStyle));
                         julyRow.push(createCell("", 's', null, rowStyle));
                         dataToExport.push(julyRow);
@@ -2493,6 +2552,14 @@
                                 selectedMonths.july,
                                 rowStyle
                             ));
+                            if (s.key === 'kills') {
+                                const diff = calculateDifference(getStat(julyStats, s.key), getStat(juneStats, s.key));
+                                let percent = 0;
+                                if (diff !== null && diff > 0 && totalKillsDiff > 0) {
+                                    percent = diff / totalKillsDiff;
+                                }
+                                diffRow.push(createCell(percent, 'n', '0.00%', rowStyle));
+                            }
                         });
                         diffRow.push(createWinRateDiffCell(getStat(julyStats, 'win_rate'), getStat(juneStats, 'win_rate'), rowStyle));
                         diffRow.push(createCell("", 's', null, rowStyle));
@@ -2575,6 +2642,12 @@
                         throw new Error("No visible data");
                     }
 
+                    // Tính tổng Kills Diff để tính %
+                    const totalKillsDiff = visibleData.reduce((sum, item) => {
+                        const diff = calculateDifference(item.julyStats?.kills, item.juneStats?.kills);
+                        return sum + ((diff !== null && diff > 0) ? diff : 0);
+                    }, 0);
+
                     const createCell = (value, type = 's', format = null, style = {}) => {
                         const defaultFont = { name: 'Times New Roman', sz: 12 };
                         const mergedFont = { ...defaultFont, ...(style.font || {}) };
@@ -2630,7 +2703,10 @@
 
                     // Header chỉ gồm STT, Tên và các cột trong cấu hình tinh gọn (Bỏ User ID theo yêu cầu)
                     const headers = ["STT", "Tên"];
-                    compactExportConfig.forEach(s => headers.push(s.name));
+                    compactExportConfig.forEach(s => {
+                        headers.push(s.name);
+                        if (s.key === 'kills') headers.push("Phần Trăm Kill");
+                    });
                     headers.push("Date");
 
                     dataToExport.push(headers.map(h => createCell(h, 's', null, { font: { bold: true } })));
@@ -2663,6 +2739,13 @@
                                 row.push(createCell(diff, 'n', '+#,##0;-#,##0;0', style));
                             } else {
                                 row.push(createCell(diff, 's', null, rowStyle));
+                            }
+                            if (s.key === 'kills') {
+                                let percent = 0;
+                                if (typeof diff === 'number' && diff > 0 && totalKillsDiff > 0) {
+                                    percent = diff / totalKillsDiff;
+                                }
+                                row.push(createCell(percent, 'n', '0.00%', rowStyle));
                             }
                         });
                         row.push(createCell(item.note || '', 's', null, { ...rowStyle, font: { color: { rgb: "FFD32F2F" }, italic: true } }));
@@ -4349,8 +4432,8 @@
                         .controls { margin-bottom: 15px; }
                         button { padding: 8px 15px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 4px; }
                         button:hover { background: #1976D2; }
-                        table { border-collapse: collapse; width: 100%; font-size: 13px; }
-                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: middle; }
+                        table { border-collapse: collapse; width: auto; font-size: 13px; }
+                        th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; vertical-align: middle; white-space: nowrap; }
                         th { background-color: #f2f2f2; position: sticky; top: 0; font-weight: bold; border-bottom: 2px solid #ccc; }
                         tr:nth-child(even) { background-color: #f9f9f9; }
                         tr:hover { background-color: #f1f1f1; }
@@ -4364,14 +4447,34 @@
                             const cols = document.querySelectorAll('.id-col');
                             cols.forEach(col => col.classList.toggle('hidden'));
                         }
+
+                        function sortByCompleteness() {
+                            const tbody = document.querySelector('tbody');
+                            const rows = Array.from(tbody.querySelectorAll('tr'));
+                            
+                            rows.sort((a, b) => {
+                                const countA = a.querySelectorAll('td.present').length;
+                                const countB = b.querySelectorAll('td.present').length;
+                                if (countB !== countA) return countB - countA;
+                                const nameA = a.cells[1].textContent.trim();
+                                const nameB = b.cells[1].textContent.trim();
+                                return nameA.localeCompare(nameB);
+                            });
+
+                            rows.forEach((row, index) => {
+                                row.cells[0].textContent = index + 1;
+                                tbody.appendChild(row);
+                            });
+                        }
                     <\/script>
                 </head>
                 <body>
                     <h2>Kiểm tra chi tiết nguồn dữ liệu</h2>
                     <div class="controls">
                         <button onclick="toggleId()">Ẩn/Hiện ID</button>
+                        <button onclick="sortByCompleteness()" style="background-color: #ff5722;">Sắp xếp theo độ đầy đủ</button>
                     </div>
-                    <p>Tổng số ID duy nhất: <strong>${sortedIds.length}</strong>. Bảng dưới đây hiển thị sự xuất hiện của từng ID trong các file đã tải lên.</p>
+                    <p>Tổng số ID duy nhất: <strong>${sortedIds.length}</strong>. Bảng dưới đây hiển thị <strong>Số Kills</strong> và mức tăng trưởng (so với lần xuất hiện trước) của từng ID qua các file.</p>
                     <table>
                         <thead>
                             <tr>
@@ -4386,14 +4489,27 @@
 
             sortedIds.forEach((id, index) => {
                 const name = idToName[id] || 'Unknown';
+                let previousKills = null; // Biến lưu số kill của lần xuất hiện trước đó để tính chênh lệch
+
                 html += `<tr>
                     <td>${index + 1}</td>
                     <td>${name}</td>
                     <td class="id-col">${id}</td>
                     ${columns.map(col => {
                         const exists = col.data[id];
-                        // Nếu tồn tại trong file, hiển thị Tên thay vì ID
-                        return exists ? `<td class="present">${exists.name || id}</td>` : `<td class="missing">-</td>`;
+                        if (exists) {
+                            const currentKills = exists.kills !== undefined ? exists.kills : 0;
+                            let display = currentKills.toLocaleString();
+                            if (previousKills !== null) {
+                                const diff = currentKills - previousKills;
+                                const color = diff > 0 ? '#2e7d32' : (diff < 0 ? '#c62828' : '#999');
+                                display += `<div style="color:${color}; font-size: 11px; font-weight: normal;">(${diff > 0 ? '+' : ''}${diff.toLocaleString()})</div>`;
+                            }
+                            previousKills = currentKills; // Cập nhật mốc so sánh
+                            return `<td class="present" style="text-align: right;">${display}</td>`;
+                        } else {
+                            return `<td class="missing">-</td>`;
+                        }
                     }).join('')}
                 </tr>`;
             });
@@ -4427,34 +4543,124 @@
         function initColumnSelector() {
             const container = document.getElementById('columnSelectorContainer');
             container.innerHTML = '';
+            container.style.display = 'block'; // Đảm bảo hiển thị dạng block để chứa các nhóm
 
-            // Helper to create checkbox
-            const createCheckbox = (key, name, checked, groupClass = '') => {
-                const wrapper = document.createElement('label');
-                wrapper.className = `column-checkbox-item ${groupClass}`;
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.value = key;
-                checkbox.checked = checked;
-                const text = document.createElement('span');
-                text.textContent = name;
-                wrapper.appendChild(checkbox);
-                wrapper.appendChild(text);
-                container.appendChild(wrapper);
-            };
-
-            // Lấy trạng thái đã lưu của các cột
             const savedVisibleColumns = JSON.parse(localStorage.getItem('visibleColumns')) || {};
 
-            // Cột cố định
-            createCheckbox('userId', 'User ID', savedVisibleColumns.userId ?? true);
-            createCheckbox('rank', 'Rank', savedVisibleColumns.rank ?? true);
+            // Định nghĩa các nhóm theo yêu cầu
+            const groups = {
+                group1: {
+                    title: "Nhóm 1: Thông tin chính & Chiến đấu",
+                    keys: ['userId', 'rank', 'might', 'kills', 'enemies_destroyed', 'enemy_wounded', 'troops_wounded', 'troops_lost']
+                },
+                group3: {
+                    title: "Nhóm 3: Tù nhân & Chỉ huy",
+                    keys: ['prisoners_executed', 'prisoners_escaped', 'leaders_escaped', 'leaders_captured', 'leaders_executed', 'bounty_collected']
+                },
+                group4: {
+                    title: "Nhóm 4: Tài nguyên & Hỗ trợ",
+                    keys: ['food_sent', 'timber_sent', 'stone_sent', 'ore_sent', 'gold_sent', 'total_resources_gathered', 'help_sent']
+                },
+                group5: {
+                    title: "Nhóm 5: Đấu trường (Colosseum)",
+                    keys: ['current_colosseum_rank', 'best_colosseum_rank', 'colosseum_battles_won']
+                },
+                group2: {
+                    title: "Nhóm 2: Các chỉ số khác",
+                    keys: [] // Sẽ được điền tự động các cột còn lại
+                }
+            };
 
+            // Tập hợp các key đã được phân nhóm
+            const assignedKeys = new Set([
+                ...groups.group1.keys,
+                ...groups.group3.keys,
+                ...groups.group4.keys,
+                ...groups.group5.keys
+            ]);
+
+            // Phân loại các key còn lại vào Nhóm 2
             allAvailableStats.forEach(stat => {
-                // Mặc định là true nếu chưa có trong localStorage
-                const isChecked = savedVisibleColumns[stat.key] ?? true;
-                createCheckbox(stat.key, stat.name, isChecked, stat.groupClass);
+                if (!assignedKeys.has(stat.key)) {
+                    groups.group2.keys.push(stat.key);
+                }
             });
+
+            // Hàm tìm thông tin hiển thị của key
+            const getStatInfo = (key) => {
+                if (key === 'userId') return { name: 'User ID' };
+                if (key === 'rank') return { name: 'Rank' };
+                return allAvailableStats.find(s => s.key === key);
+            };
+
+            // Hàm render một nhóm
+            const renderGroup = (groupKey) => {
+                const group = groups[groupKey];
+                // Lọc ra các key thực sự có dữ liệu (có trong allAvailableStats hoặc là userId/rank)
+                const validKeys = group.keys.filter(key => {
+                    if (key === 'userId' || key === 'rank') return true;
+                    return allAvailableStats.some(s => s.key === key);
+                });
+
+                if (validKeys.length === 0) return;
+
+                const groupDiv = document.createElement('div');
+                groupDiv.style.marginBottom = '20px';
+
+                const title = document.createElement('h3');
+                title.textContent = group.title;
+                title.style.margin = '0 0 10px 0';
+                title.style.fontSize = '15px';
+                title.style.color = '#2196F3';
+                title.style.borderBottom = '1px solid #eee';
+                title.style.paddingBottom = '5px';
+                title.style.cursor = 'pointer';
+                title.style.userSelect = 'none';
+                title.title = "Click để chọn/bỏ chọn tất cả trong nhóm";
+
+                title.onclick = () => {
+                    const checkboxes = gridDiv.querySelectorAll('input[type="checkbox"]');
+                    const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+                    checkboxes.forEach(cb => cb.checked = !allChecked);
+                };
+                groupDiv.appendChild(title);
+
+                const gridDiv = document.createElement('div');
+                gridDiv.style.display = 'grid';
+                gridDiv.style.gridTemplateColumns = 'repeat(auto-fill, minmax(200px, 1fr))';
+                gridDiv.style.gap = '10px';
+
+                validKeys.forEach(key => {
+                    const statInfo = getStatInfo(key);
+                    const isChecked = savedVisibleColumns[key] ?? true;
+
+                    const label = document.createElement('label');
+                    label.className = 'column-checkbox-item';
+                    
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.value = key;
+                    checkbox.checked = isChecked;
+                    checkbox.style.marginRight = '8px';
+
+                    const span = document.createElement('span');
+                    span.textContent = statInfo.name;
+
+                    label.appendChild(checkbox);
+                    label.appendChild(span);
+                    gridDiv.appendChild(label);
+                });
+
+                groupDiv.appendChild(gridDiv);
+                container.appendChild(groupDiv);
+            };
+
+            // Render theo thứ tự 1 -> 2 -> 3 -> 4 -> 5
+            renderGroup('group1');
+            renderGroup('group2');
+            renderGroup('group3');
+            renderGroup('group4');
+            renderGroup('group5');
         }
 
         function selectAllColumns(checked) {
