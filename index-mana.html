@@ -262,8 +262,9 @@
                 <button onclick="zoomDiagram(-0.2)" style="background: #f44336; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">➖ Thu nhỏ</button>
             </div>
             
-            <div id="diagram-scroll-container" style="overflow: auto; max-height: 70vh; border: 1px solid #333; background: #1a1a2e; border-radius: 4px; padding: 10px; touch-action: pan-x pan-y;">
-                <div class="mermaid" style="text-align: center;">
+            <div id="diagram-scroll-container" style="overflow: hidden; height: 70vh; border: 1px solid #333; background: #1a1a2e; border-radius: 4px; position: relative; cursor: grab; touch-action: none;">
+                <div id="diagram-layer" style="transform-origin: 0 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center;">
+                    <div class="mermaid" style="text-align: center;">
                 %%{init: {'theme': 'dark', 'flowchart': {'curve': 'basis'}}}%%
                 flowchart TD
                 %% Nodes
@@ -296,7 +297,6 @@
                 ManaMine(💎 Mỏ mana)
 
                 %% Relationships
-                Castle --> Embassy
                 Castle --> Monster
                 Castle --> Vault
                 Castle --> Ore
@@ -315,6 +315,7 @@
                 Wood --> Manor
                 Manor --> Prison
                 Stone --> Barracks
+                Stone --> Embassy
 
                 Barracks --> Infirmary
                 Embassy --> Hall
@@ -361,6 +362,7 @@
                 
                 linkStyle default stroke:#00d2ff,stroke-width:2px,fill:none;
             </div>
+                </div>
             </div>
         </div>
     </div>
@@ -392,65 +394,129 @@
     }
 
     // Xử lý Zoom sơ đồ
-    let currentScale = 1;
-    function zoomDiagram(delta) {
-        const svg = document.querySelector('.mermaid svg');
-        if (!svg) return;
-        
-        currentScale += delta;
-        if (currentScale < 0.5) currentScale = 0.5;
-        
-        svg.style.maxWidth = 'none';
-        svg.style.width = (currentScale * 100) + '%';
-        svg.style.height = 'auto';
+    let scale = 1;
+    let pointX = 0;
+    let pointY = 0;
+    let isPanning = false;
+    let startX = 0;
+    let startY = 0;
+
+    const container = document.getElementById('diagram-scroll-container');
+    const layer = document.getElementById('diagram-layer');
+
+    function setTransform() {
+        layer.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`;
     }
 
-    function resetZoom() {
-        const svg = document.querySelector('.mermaid svg');
-        if (!svg) return;
-        currentScale = 1;
-        svg.style.maxWidth = '';
-        svg.style.width = '';
-        svg.style.height = '';
+    window.zoomDiagram = function(delta) {
+        const rect = container.getBoundingClientRect();
+        const cx = rect.width / 2;
+        const cy = rect.height / 2;
+        const factor = delta > 0 ? 1.2 : 0.8;
+        const newScale = scale * factor;
+        
+        pointX = cx - (cx - pointX) * (newScale / scale);
+        pointY = cy - (cy - pointY) * (newScale / scale);
+        scale = newScale;
+        setTransform();
     }
 
-    // Xử lý cảm ứng (Pinch to Zoom) cho điện thoại/iPad
-    const scrollContainer = document.getElementById('diagram-scroll-container');
-    let initialDistance = 0;
+    window.resetZoom = function() {
+        scale = 1;
+        pointX = 0;
+        pointY = 0;
+        setTransform();
+    }
+
+    // Mouse Wheel Zoom (Google Maps style)
+    container.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect = container.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        const delta = -Math.sign(e.deltaY);
+        const factor = delta > 0 ? 1.1 : 0.9;
+        const newScale = scale * factor;
+        
+        if (newScale < 0.1 || newScale > 10) return;
+
+        pointX = mx - (mx - pointX) * (newScale / scale);
+        pointY = my - (my - pointY) * (newScale / scale);
+        scale = newScale;
+        setTransform();
+    }, { passive: false });
+
+    // Mouse Pan
+    container.addEventListener('mousedown', (e) => {
+        isPanning = true;
+        startX = e.clientX - pointX;
+        startY = e.clientY - pointY;
+        container.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+        if (!isPanning) return;
+        e.preventDefault();
+        pointX = e.clientX - startX;
+        pointY = e.clientY - startY;
+        setTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+        if (isPanning) {
+            isPanning = false;
+            container.style.cursor = 'grab';
+        }
+    });
+
+    // Touch Logic (Pinch + Pan)
+    let initialDist = 0;
     let initialScale = 1;
 
-    scrollContainer.addEventListener('touchstart', function(e) {
-        if (e.touches.length === 2) {
-            initialDistance = getDistance(e.touches[0], e.touches[1]);
-            initialScale = currentScale;
-            e.preventDefault(); // Ngăn trình duyệt can thiệp khi dùng 2 ngón
+    container.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            isPanning = true;
+            startX = e.touches[0].clientX - pointX;
+            startY = e.touches[0].clientY - pointY;
+        } else if (e.touches.length === 2) {
+            isPanning = false;
+            initialDist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            initialScale = scale;
         }
     }, { passive: false });
 
-    scrollContainer.addEventListener('touchmove', function(e) {
-        if (e.touches.length === 2) {
-            const currentDistance = getDistance(e.touches[0], e.touches[1]);
-            if (initialDistance > 0) {
-                const scaleChange = currentDistance / initialDistance;
-                let newScale = initialScale * scaleChange;
-                
-                if (newScale < 0.5) newScale = 0.5;
-                currentScale = newScale;
-
-                const svg = document.querySelector('.mermaid svg');
-                if (svg) {
-                    svg.style.maxWidth = 'none';
-                    svg.style.width = (currentScale * 100) + '%';
-                    svg.style.height = 'auto';
-                }
-            }
-            e.preventDefault();
+    container.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        if (e.touches.length === 1 && isPanning) {
+            pointX = e.touches[0].clientX - startX;
+            pointY = e.touches[0].clientY - startY;
+            setTransform();
+        } else if (e.touches.length === 2 && initialDist > 0) {
+            const currentDist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            const rect = container.getBoundingClientRect();
+            const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+            const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+            
+            const factor = currentDist / initialDist;
+            const newScale = initialScale * factor;
+            
+            pointX = cx - (cx - pointX) * (newScale / scale);
+            pointY = cy - (cy - pointY) * (newScale / scale);
+            scale = newScale;
+            setTransform();
         }
     }, { passive: false });
 
-    function getDistance(touch1, touch2) {
-        return Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY);
-    }
+    container.addEventListener('touchend', (e) => {
+        if (e.touches.length < 2) initialDist = 0;
+        if (e.touches.length === 0) isPanning = false;
+    });
 
     let isDiagramRendered = false;
     
@@ -788,10 +854,10 @@ mỏ mana,,mỏ mana,,4935,,,,,
     const sortOrder = [
         "lâu đài",
         "quặng", "xưởng", "tường thành",
-        "đá", "doanh trại", "bệnh xá",
+        "đá", "sứ quán", "doanh trại", "bệnh xá",
         "gỗ", "lúa", "trang viên", "nhà tù", "đền thờ",
         "hầm chứa", "thương hội",
-        "sứ quán", "tòa hội chiến",
+        "tòa hội chiến",
         "trại quái vật", "đỉnh kỳ bí", "hồn", "phòng tập",
         "mỏ mana", "xưởng đá trăng",
         "học viện",
