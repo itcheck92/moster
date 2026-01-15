@@ -359,7 +359,7 @@
                 class Cav,Inf,Range troop;
                 
                 linkStyle default stroke:#00d2ff,stroke-width:2px,fill:none;
-            </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -391,37 +391,70 @@
         document.body.style.paddingTop = (header.offsetHeight + 20) + 'px';
     }
 
-    // Xử lý Zoom sơ đồ
-    let scale = 1;
-    let pointX = 0;
-    let pointY = 0;
-    let isPanning = false;
-    let startX = 0;
-    let startY = 0;
+    // --- Xử lý Sơ đồ (Zoom, Pan, Switch View) ---
+    let scale = 1, pointX = 0, pointY = 0, rotation = 0;
+    let isPanning = false, startX = 0, startY = 0;
+    let isDiagramRendered = false;
 
-    const container = document.getElementById('diagram-scroll-container');
-    const layer = document.getElementById('diagram-layer');
+    async function switchView(mode) {
+        const grid = document.getElementById('app');
+        const diagram = document.getElementById('diagram-view');
+        const btnGrid = document.getElementById('btn-grid');
+        const btnDiagram = document.getElementById('btn-diagram');
 
-    function setTransform() {
-        layer.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`;
+        if (mode === 'grid') {
+            grid.style.display = 'grid';
+            diagram.style.display = 'none';
+            btnGrid.classList.add('active');
+            btnDiagram.classList.remove('active');
+        } else {
+            grid.style.display = 'none';
+            diagram.style.display = 'block';
+            btnGrid.classList.remove('active');
+            btnDiagram.classList.add('active');
+            
+            if (!isDiagramRendered) {
+                await mermaid.run({ nodes: document.querySelectorAll('.mermaid') });
+                isDiagramRendered = true;
+            }
+        }
     }
 
-    // Mouse Wheel Zoom (Google Maps style)
+    function updateTransform() {
+        const layer = document.getElementById('diagram-layer');
+        if(layer) layer.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale}) rotate(${rotation}deg)`;
+    }
+
+    window.zoomDiagram = function(delta) {
+        const factor = delta > 0 ? 1.2 : 0.8;
+        scale *= factor;
+        updateTransform();
+    }
+
+    window.resetZoom = function() {
+        scale = 1; pointX = 0; pointY = 0; rotation = 0;
+        updateTransform();
+    }
+
+    // Event Listeners cho Pan/Zoom
+    const container = document.getElementById('diagram-scroll-container');
+    
+    // Wheel Zoom
     container.addEventListener('wheel', (e) => {
         e.preventDefault();
-        const rect = container.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
         const delta = -Math.sign(e.deltaY);
         const factor = delta > 0 ? 1.1 : 0.9;
         const newScale = scale * factor;
-        
         if (newScale < 0.1 || newScale > 10) return;
 
+        const rect = container.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+        
         pointX = mx - (mx - pointX) * (newScale / scale);
         pointY = my - (my - pointY) * (newScale / scale);
         scale = newScale;
-        setTransform();
+        updateTransform();
     }, { passive: false });
 
     // Mouse Pan
@@ -431,26 +464,20 @@
         startY = e.clientY - pointY;
         container.style.cursor = 'grabbing';
     });
-
     window.addEventListener('mousemove', (e) => {
         if (!isPanning) return;
         e.preventDefault();
         pointX = e.clientX - startX;
         pointY = e.clientY - startY;
-        setTransform();
+        updateTransform();
     });
-
     window.addEventListener('mouseup', () => {
-        if (isPanning) {
-            isPanning = false;
-            container.style.cursor = 'grab';
-        }
+        isPanning = false;
+        container.style.cursor = 'grab';
     });
 
-    // Touch Logic (Pinch + Pan)
-    let initialDist = 0;
-    let initialScale = 1;
-
+    // Touch Pan/Zoom
+    let initDist = 0, initScale = 1, initAngle = 0;
     container.addEventListener('touchstart', (e) => {
         if (e.touches.length === 1) {
             isPanning = true;
@@ -458,41 +485,47 @@
             startY = e.touches[0].clientY - pointY;
         } else if (e.touches.length === 2) {
             isPanning = false;
-            initialDist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
+            initDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            initScale = scale;
+            initAngle = Math.atan2(
+                e.touches[1].clientY - e.touches[0].clientY,
+                e.touches[1].clientX - e.touches[0].clientX
             );
-            initialScale = scale;
         }
     }, { passive: false });
-
     container.addEventListener('touchmove', (e) => {
         e.preventDefault();
         if (e.touches.length === 1 && isPanning) {
             pointX = e.touches[0].clientX - startX;
             pointY = e.touches[0].clientY - startY;
-            setTransform();
-        } else if (e.touches.length === 2 && initialDist > 0) {
-            const currentDist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
+            updateTransform();
+        } else if (e.touches.length === 2 && initDist > 0) {
+            const currDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+            const factor = currDist / initDist;
+            const newScale = initScale * factor;
             const rect = container.getBoundingClientRect();
             const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
             const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
-            
-            const factor = currentDist / initialDist;
-            const newScale = initialScale * factor;
-            
             pointX = cx - (cx - pointX) * (newScale / scale);
             pointY = cy - (cy - pointY) * (newScale / scale);
             scale = newScale;
-            setTransform();
+
+            // Xử lý Xoay (Rotation)
+            const currentAngle = Math.atan2(
+                e.touches[1].clientY - e.touches[0].clientY,
+                e.touches[1].clientX - e.touches[0].clientX
+            );
+            let angleDiff = (currentAngle - initAngle) * 180 / Math.PI;
+            if (angleDiff > 180) angleDiff -= 360;
+            if (angleDiff < -180) angleDiff += 360;
+            rotation += angleDiff;
+            initAngle = currentAngle; // Cập nhật góc cho lần di chuyển tiếp theo
+
+            updateTransform();
         }
     }, { passive: false });
-
     container.addEventListener('touchend', (e) => {
-        if (e.touches.length < 2) initialDist = 0;
+        if (e.touches.length < 2) initDist = 0;
         if (e.touches.length === 0) isPanning = false;
     });
 
@@ -533,36 +566,6 @@
             a.href = canvas.toDataURL('image/png');
             a.click();
         };
-    }
-
-    let isDiagramRendered = false;
-    
-    async function switchView(mode) {
-        const grid = document.getElementById('app');
-        const diagram = document.getElementById('diagram-view');
-        const btnGrid = document.getElementById('btn-grid');
-        const btnDiagram = document.getElementById('btn-diagram');
-
-        if (mode === 'grid') {
-            grid.style.display = 'grid';
-            diagram.style.display = 'none';
-            btnGrid.classList.add('active');
-            btnDiagram.classList.remove('active');
-        } else {
-            grid.style.display = 'none';
-            diagram.style.display = 'block';
-            btnGrid.classList.remove('active');
-            btnDiagram.classList.add('active');
-            
-            if (!isDiagramRendered) {
-                if (mermaid.run) {
-                    await mermaid.run({ nodes: document.querySelectorAll('.mermaid') });
-                } else {
-                    mermaid.init(undefined, document.querySelectorAll('.mermaid'));
-                }
-                isDiagramRendered = true;
-            }
-        }
     }
 
     // Dữ liệu thô từ CSV của bạn (Đã được xử lý thành text để JS parse)
