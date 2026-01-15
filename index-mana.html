@@ -257,13 +257,110 @@
             <h2 style="text-align: center; color: #ff9f43; margin-top: 0;">Sơ Đồ Phụ Thuộc</h2>
             
             <div style="display: flex; justify-content: center; margin-bottom: 10px; gap: 10px;">
-                <button onclick="toggleDirection()" style="background: #673AB7; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">🔄 Xoay Ngang/Dọc</button>
+                <button onclick="rotateDiagram(-90)" style="background: #673AB7; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">↩️ Xoay Trái</button>
                 <button onclick="downloadDiagram()" style="background: #FF9800; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">📷 Chụp ảnh HD</button>
+                <button onclick="rotateDiagram(90)" style="background: #673AB7; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">↪️ Xoay Phải</button>
             </div>
             
             <div id="diagram-scroll-container" style="overflow: hidden; height: 70vh; border: 1px solid #333; background: #1a1a2e; border-radius: 4px; position: relative; cursor: grab; touch-action: none;">
                 <div id="diagram-layer" style="transform-origin: 0 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center;">
                     <div class="mermaid" style="text-align: center;">
+                %%{init: {'theme': 'dark', 'flowchart': {'curve': 'basis'}}}%%
+                flowchart TD
+                %% Nodes
+                Castle((🏰 Lâu đài))
+                Barracks(⚔️ Doanh Trại)
+                Infirmary(🏥 Bệnh Xá)
+                Embassy(🏳️ Sứ Quán)
+                Hall(🤝 Hội Chiến)
+                Monster(🐉 Trại Quái Vật)
+                Spire(✨ Đỉnh Kỳ Bí)
+                Soul(👻 Hồn)
+                Gym(🏋️ Phòng Tập)
+                Academy(🎓 Học Viện)
+                ManaRoom(🔮 Phòng Mana)
+                Workshop(⚙️ Xưởng)
+                Cav{{🐎 Kỵ binh}}
+                Inf{{🛡️ Bộ binh}}
+                Range{{🏹 Cung}}
+                Moon(🌙 Xưởng đá trăng)
+                Vault(💰 Hầm Chứa)
+                Manor(🏡 Trang Viên)
+                Wall(🧱 Tường Thành)
+                Ore(⛏️ Quặng)
+                Market(⚖️ Thương Hội)
+                Stone(🪨 Đá)
+                Food(🌾 Lúa)
+                Temple(⛩️ Đền Thờ)
+                Wood(🌲 Gỗ)
+                Prison(⛓️ Nhà Tù)
+                ManaMine(💎 Mỏ mana)
+
+                %% Relationships
+                Castle --> Monster
+                Castle --> Vault
+                Castle --> Ore
+                Castle --> Market
+                Castle --> Stone
+                Castle --> Food
+                Castle --> Wood
+                Castle --> ManaMine
+                Castle --> Moon
+
+                %% Custom Dependencies
+                Ore --> Workshop
+                Workshop --> Wall
+                Prison --> Temple
+                Food --> Manor
+                Wood --> Manor
+                Manor --> Prison
+                Stone --> Barracks
+                Stone --> Embassy
+
+                Barracks --> Infirmary
+                Embassy --> Hall
+                Monster --> Spire
+                Monster --> Soul
+                Monster --> Gym
+
+                %% Academy Requirements
+                Infirmary --> Academy
+                Hall --> Academy
+                Spire --> Academy
+                Soul --> Academy
+                Gym --> Academy
+                Vault --> Academy
+                Wall --> Academy
+                Market --> Academy
+                Temple --> Academy
+                ManaMine --> Academy
+
+                %% Mana Room
+                Academy --> ManaRoom
+                Moon --> ManaRoom
+
+                %% Troops
+                ManaRoom --> Cav
+                ManaRoom --> Inf
+                ManaRoom --> Range
+                
+                %% Styling
+                classDef default fill:#2a2a40,stroke:#555,color:#eee,rx:10,ry:10,stroke-width:2px;
+                classDef castle fill:#d32f2f,stroke:#ffcdd2,stroke-width:4px,color:#fff,font-weight:bold,font-size:16px;
+                classDef resource fill:#388e3c,stroke:#a5d6a7,color:#fff;
+                classDef military fill:#f57c00,stroke:#ffe0b2,color:#fff;
+                classDef advanced fill:#7b1fa2,stroke:#e1bee7,color:#fff;
+                classDef basic fill:#1976d2,stroke:#bbdefb,color:#fff;
+                classDef troop fill:#455a64,stroke:#cfd8dc,color:#fff,stroke-dasharray: 5 5;
+                
+                class Castle castle;
+                class Food,Wood,Stone,Ore,ManaMine,Moon resource;
+                class Barracks,Infirmary,Embassy,Hall,Prison,Temple military;
+                class Monster,Spire,Soul,Gym,Academy,ManaRoom,Workshop advanced;
+                class Vault,Manor,Wall,Market basic;
+                class Cav,Inf,Range troop;
+                
+                linkStyle default stroke:#00d2ff,stroke-width:2px,fill:none;
                     </div>
                 </div>
             </div>
@@ -297,10 +394,10 @@
     }
 
     // --- Xử lý Sơ đồ (Zoom, Pan, Switch View) ---
-    let scale = 1, pointX = 0, pointY = 0;
+    let scale = 1, pointX = 0, pointY = 0, rotation = 0;
     let isPanning = false, startX = 0, startY = 0;
+    let isRotating = false, startAngle = 0, currentRotationStart = 0;
     let isDiagramRendered = false;
-    let currentDirection = 'TD';
 
     async function switchView(mode) {
         const grid = document.getElementById('app');
@@ -320,33 +417,30 @@
             btnDiagram.classList.add('active');
             
             if (!isDiagramRendered) {
-                await renderMermaid();
+                await mermaid.run({ nodes: document.querySelectorAll('.mermaid') });
                 isDiagramRendered = true;
             }
         }
     }
 
-    async function renderMermaid() {
-        const container = document.querySelector('.mermaid');
-        const source = baseDiagramSource.replace('flowchart TD', `flowchart ${currentDirection}`);
-        container.innerHTML = source;
-        container.removeAttribute('data-processed');
-        await mermaid.run({ nodes: [container] });
-    }
-
-    function toggleDirection() {
-        currentDirection = currentDirection === 'TD' ? 'LR' : 'TD';
-        renderMermaid();
-        resetZoom();
-    }
-
     function updateTransform() {
         const layer = document.getElementById('diagram-layer');
-        if(layer) layer.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`;
+        if(layer) layer.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale}) rotate(${rotation}deg)`;
+    }
+
+    window.zoomDiagram = function(delta) {
+        const factor = delta > 0 ? 1.2 : 0.8;
+        scale *= factor;
+        updateTransform();
+    }
+
+    window.rotateDiagram = function(deg) {
+        rotation += deg;
+        updateTransform();
     }
 
     window.resetZoom = function() {
-        scale = 1; pointX = 0; pointY = 0;
+        scale = 1; pointX = 0; pointY = 0; rotation = 0;
         updateTransform();
     }
 
@@ -373,13 +467,31 @@
 
     // Mouse Pan
     container.addEventListener('mousedown', (e) => {
-        isPanning = true;
-        startX = e.clientX - pointX;
-        startY = e.clientY - pointY;
+        if (e.shiftKey || e.button === 2) { // Shift + Click hoặc Chuột phải để xoay
+            e.preventDefault();
+            isRotating = true;
+            const rect = container.getBoundingClientRect();
+            const cx = rect.width / 2;
+            const cy = rect.height / 2;
+            startAngle = Math.atan2(e.clientY - rect.top - cy, e.clientX - rect.left - cx) * 180 / Math.PI;
+            currentRotationStart = rotation;
+        } else {
+            isPanning = true;
+            startX = e.clientX - pointX;
+            startY = e.clientY - pointY;
+        }
         container.style.cursor = 'grabbing';
     });
     window.addEventListener('mousemove', (e) => {
-        if (isPanning) {
+        if (isRotating) {
+            e.preventDefault();
+            const rect = container.getBoundingClientRect();
+            const cx = rect.width / 2;
+            const cy = rect.height / 2;
+            const currentAngle = Math.atan2(e.clientY - rect.top - cy, e.clientX - rect.left - cx) * 180 / Math.PI;
+            rotation = currentRotationStart + (currentAngle - startAngle);
+            updateTransform();
+        } else if (isPanning) {
             e.preventDefault();
             pointX = e.clientX - startX;
             pointY = e.clientY - startY;
@@ -388,12 +500,15 @@
     });
     window.addEventListener('mouseup', () => {
         isPanning = false;
+        isRotating = false;
         container.style.cursor = 'grab';
     });
     
+    // Prevent context menu on right click for rotation
+    container.addEventListener('contextmenu', e => e.preventDefault());
 
     // Touch Pan/Zoom
-    let initDist = 0, initScale = 1;
+    let initDist = 0, initScale = 1, initAngle = 0;
     container.addEventListener('touchstart', (e) => {
         if (e.touches.length === 1) {
             isPanning = true;
@@ -403,6 +518,10 @@
             isPanning = false;
             initDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
             initScale = scale;
+            initAngle = Math.atan2(
+                e.touches[1].clientY - e.touches[0].clientY,
+                e.touches[1].clientX - e.touches[0].clientX
+            );
         }
     }, { passive: false });
     container.addEventListener('touchmove', (e) => {
@@ -421,6 +540,17 @@
             pointX = cx - (cx - pointX) * (newScale / scale);
             pointY = cy - (cy - pointY) * (newScale / scale);
             scale = newScale;
+
+            // Xử lý Xoay (Rotation)
+            const currentAngle = Math.atan2(
+                e.touches[1].clientY - e.touches[0].clientY,
+                e.touches[1].clientX - e.touches[0].clientX
+            );
+            let angleDiff = (currentAngle - initAngle) * 180 / Math.PI;
+            if (angleDiff > 180) angleDiff -= 360;
+            if (angleDiff < -180) angleDiff += 360;
+            rotation += angleDiff;
+            initAngle = currentAngle; // Cập nhật góc cho lần di chuyển tiếp theo
 
             updateTransform();
         }
@@ -468,105 +598,6 @@
             a.click();
         };
     }
-
-    const baseDiagramSource = `
-%%{init: {'theme': 'dark', 'flowchart': {'curve': 'basis'}}}%%
-flowchart TD
-%% Nodes
-Castle((🏰 Lâu đài))
-Barracks(⚔️ Doanh Trại)
-Infirmary(🏥 Bệnh Xá)
-Embassy(🏳️ Sứ Quán)
-Hall(🤝 Hội Chiến)
-Monster(🐉 Trại Quái Vật)
-Spire(✨ Đỉnh Kỳ Bí)
-Soul(👻 Hồn)
-Gym(🏋️ Phòng Tập)
-Academy(🎓 Học Viện)
-ManaRoom(🔮 Phòng Mana)
-Workshop(⚙️ Xưởng)
-Cav{{🐎 Kỵ binh}}
-Inf{{🛡️ Bộ binh}}
-Range{{🏹 Cung}}
-Moon(🌙 Xưởng đá trăng)
-Vault(💰 Hầm Chứa)
-Manor(🏡 Trang Viên)
-Wall(🧱 Tường Thành)
-Ore(⛏️ Quặng)
-Market(⚖️ Thương Hội)
-Stone(🪨 Đá)
-Food(🌾 Lúa)
-Temple(⛩️ Đền Thờ)
-Wood(🌲 Gỗ)
-Prison(⛓️ Nhà Tù)
-ManaMine(💎 Mỏ mana)
-
-%% Relationships
-Castle --> Monster
-Castle --> Vault
-Castle --> Ore
-Castle --> Market
-Castle --> Stone
-Castle --> Food
-Castle --> Wood
-Castle --> ManaMine
-Castle --> Moon
-
-%% Custom Dependencies
-Ore --> Workshop
-Workshop --> Wall
-Prison --> Temple
-Food --> Manor
-Wood --> Manor
-Manor --> Prison
-Stone --> Barracks
-Stone --> Embassy
-
-Barracks --> Infirmary
-Embassy --> Hall
-Monster --> Spire
-Monster --> Soul
-Monster --> Gym
-
-%% Academy Requirements
-Infirmary --> Academy
-Hall --> Academy
-Spire --> Academy
-Soul --> Academy
-Gym --> Academy
-Vault --> Academy
-Wall --> Academy
-Market --> Academy
-Temple --> Academy
-ManaMine --> Academy
-
-%% Mana Room
-Academy --> ManaRoom
-Moon --> ManaRoom
-
-%% Troops
-ManaRoom --> Cav
-ManaRoom --> Inf
-ManaRoom --> Range
-
-%% Styling
-classDef default fill:#2a2a40,stroke:#555,color:#eee,rx:10,ry:10,stroke-width:2px;
-classDef castle fill:#d32f2f,stroke:#ffcdd2,stroke-width:4px,color:#fff,font-weight:bold,font-size:16px;
-classDef resource fill:#388e3c,stroke:#a5d6a7,color:#fff;
-classDef military fill:#f57c00,stroke:#ffe0b2,color:#fff;
-classDef advanced fill:#7b1fa2,stroke:#e1bee7,color:#fff;
-classDef basic fill:#1976d2,stroke:#bbdefb,color:#fff;
-classDef troop fill:#455a64,stroke:#cfd8dc,color:#fff,stroke-dasharray: 5 5;
-
-class Castle castle;
-class Food,Wood,Stone,Ore,ManaMine,Moon resource;
-class Barracks,Infirmary,Embassy,Hall,Prison,Temple military;
-class Monster,Spire,Soul,Gym,Academy,ManaRoom,Workshop advanced;
-class Vault,Manor,Wall,Market basic;
-class Cav,Inf,Range troop;
-
-linkStyle default stroke:#00d2ff,stroke-width:2px,fill:none;
-`;
 
     // Dữ liệu thô từ CSV của bạn (Đã được xử lý thành text để JS parse)
     const rawCsvData = `
