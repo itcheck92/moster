@@ -256,10 +256,8 @@
         <div style="background: #16213e; padding: 20px; border-radius: 8px; border: 1px solid #ff9f43;">
             <h2 style="text-align: center; color: #ff9f43; margin-top: 0;">Sơ Đồ Phụ Thuộc</h2>
             
-            <div style="display: flex; justify-content: center; gap: 10px; margin-bottom: 10px;">
-                <button onclick="zoomDiagram(0.2)" style="background: #4CAF50; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">➕ Phóng to</button>
-                <button onclick="resetZoom()" style="background: #2196F3; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">🔄 Mặc định</button>
-                <button onclick="zoomDiagram(-0.2)" style="background: #f44336; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">➖ Thu nhỏ</button>
+            <div style="display: flex; justify-content: center; margin-bottom: 10px;">
+                <button onclick="downloadDiagram()" style="background: #FF9800; color: white; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">📷 Chụp ảnh HD</button>
             </div>
             
             <div id="diagram-scroll-container" style="overflow: hidden; height: 70vh; border: 1px solid #333; background: #1a1a2e; border-radius: 4px; position: relative; cursor: grab; touch-action: none;">
@@ -408,26 +406,6 @@
         layer.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`;
     }
 
-    window.zoomDiagram = function(delta) {
-        const rect = container.getBoundingClientRect();
-        const cx = rect.width / 2;
-        const cy = rect.height / 2;
-        const factor = delta > 0 ? 1.2 : 0.8;
-        const newScale = scale * factor;
-        
-        pointX = cx - (cx - pointX) * (newScale / scale);
-        pointY = cy - (cy - pointY) * (newScale / scale);
-        scale = newScale;
-        setTransform();
-    }
-
-    window.resetZoom = function() {
-        scale = 1;
-        pointX = 0;
-        pointY = 0;
-        setTransform();
-    }
-
     // Mouse Wheel Zoom (Google Maps style)
     container.addEventListener('wheel', (e) => {
         e.preventDefault();
@@ -517,6 +495,45 @@
         if (e.touches.length < 2) initialDist = 0;
         if (e.touches.length === 0) isPanning = false;
     });
+
+    // Chụp ảnh sơ đồ chất lượng cao
+    function downloadDiagram() {
+        const svg = document.querySelector('#diagram-layer svg');
+        if (!svg) {
+            alert("Vui lòng đợi sơ đồ tải xong hoặc chuyển sang tab Sơ đồ trước!");
+            return;
+        }
+
+        // 1. Lấy kích thước thực của SVG
+        const bbox = svg.getBBox();
+        const scaleFactor = 3; // Tăng độ phân giải lên 3 lần để ảnh nét
+        const width = Math.ceil(bbox.width * scaleFactor) + 40; // + padding
+        const height = Math.ceil(bbox.height * scaleFactor) + 40;
+
+        // 2. Tạo Canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+
+        // 3. Vẽ nền
+        ctx.fillStyle = "#1a1a2e";
+        ctx.fillRect(0, 0, width, height);
+
+        // 4. Chuyển SVG thành ảnh
+        const serializer = new XMLSerializer();
+        let source = serializer.serializeToString(svg);
+        const img = new Image();
+        img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(source)));
+
+        img.onload = function() {
+            ctx.drawImage(img, 20, 20, bbox.width * scaleFactor, bbox.height * scaleFactor);
+            const a = document.createElement('a');
+            a.download = 'so-do-lien-ket-HD.png';
+            a.href = canvas.toDataURL('image/png');
+            a.click();
+        };
+    }
 
     let isDiagramRendered = false;
     
@@ -856,7 +873,7 @@ mỏ mana,,mỏ mana,,4935,,,,,
         "quặng", "xưởng", "tường thành",
         "đá", "sứ quán","tòa hội chiến", "doanh trại", "bệnh xá",
         "gỗ", "lúa", "trang viên", "nhà tù", "đền thờ",
-        "hầm chứa", "thương hội",
+        "hầm chứa", "thương hội",        
         "trại quái vật", "đỉnh kỳ bí", "hồn", "phòng tập",
         "mỏ mana", "xưởng đá trăng",
         "học viện",
@@ -880,4 +897,3 @@ mỏ mana,,mỏ mana,,4935,,,,,
 
 </body>
 </html>
-
