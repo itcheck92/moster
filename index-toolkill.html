@@ -1092,10 +1092,35 @@
             { key: 'ore_sent', name: 'Quặng', groupClass: 'group-ore', cellClass: 'group-ore-cell' },
             { key: 'gold_sent', name: 'Vàng', groupClass: 'group-gold', cellClass: 'group-gold-cell' },
             { key: 'total_resources_gathered', name: 'Tổng số RSS đã thu', groupClass: 'group-resources-gathered', cellClass: 'group-resources-gathered-cell' },
-            { key: 'help_sent', name: 'Hỗ trợ đã gửi', groupClass: 'group-help-sent', cellClass: 'group-help-sent-cell' }
+            { key: 'help_sent', name: 'Hỗ trợ đã gửi', groupClass: 'group-help-sent', cellClass: 'group-help-sent-cell' },
+            { key: 'win_rate', name: 'Tỉ Lệ Chiến Thắng', groupClass: 'group-win-rate', cellClass: 'group-win-rate-cell' }
         ];
         // Biến lưu cấu hình hiện tại (sẽ thay đổi dựa trên file Excel)
         let activeStatsConfig = [...DEFAULT_STATS_CONFIG];
+
+        // Định nghĩa các nhóm cột toàn cục
+        const COLUMN_GROUPS = {
+            group1: {
+                title: "Nhóm 1: Thông tin chính & Chiến đấu",
+                keys: ['userId', 'rank', 'might', 'kills', 'enemies_destroyed', 'enemy_wounded', 'troops_wounded', 'troops_lost']
+            },
+            group3: {
+                title: "Nhóm 3: Tù nhân & Chỉ huy",
+                keys: ['prisoners_executed', 'prisoners_escaped', 'leaders_escaped', 'leaders_captured', 'leaders_executed', 'bounty_collected']
+            },
+            group4: {
+                title: "Nhóm 4: Tài nguyên & Hỗ trợ",
+                keys: ['food_sent', 'timber_sent', 'stone_sent', 'ore_sent', 'gold_sent', 'total_resources_gathered', 'help_sent']
+            },
+            group5: {
+                title: "Nhóm 5: Đấu trường (Colosseum)",
+                keys: ['current_colosseum_rank', 'best_colosseum_rank', 'colosseum_battles_won']
+            },
+            group2: {
+                title: "Nhóm 2: Các chỉ số khác",
+                keys: [] // Sẽ được điền tự động
+            }
+        };
 
         // Hàm định dạng số lớn (triệu, tỷ) cho các trục biểu đồ
         const formatVietnameseTick = (value) => {
@@ -1108,6 +1133,17 @@
             if (absVal >= 1e3) return sign + (absVal / 1e3).toFixed(0) + 'k';
             return value.toLocaleString('vi-VN');
         };
+
+        // Hàm định dạng số RSS (M, B)
+        const RSS_KEYS = ['food_sent', 'timber_sent', 'stone_sent', 'ore_sent', 'gold_sent', 'total_resources_gathered'];
+        function formatRSSNumber(num) {
+            if (num === undefined || num === null) return '0';
+            const absVal = Math.abs(num);
+            const sign = num < 0 ? '-' : '';
+            if (absVal >= 1e9) return sign + (absVal / 1e9).toFixed(2).replace(/\.00$|\.0$/, '') + 'B';
+            if (absVal >= 1e6) return sign + (absVal / 1e6).toFixed(2).replace(/\.00$|\.0$/, '') + 'M';
+            return num.toLocaleString('vi-VN');
+        }
 
         // SMART: Hàm trích xuất ngày tháng từ tên file
         function extractDateFromFileName(filename) {
@@ -1361,6 +1397,14 @@
                     }
                 });
 
+                // Sắp xếp danh sách file trung gian theo thời gian (dựa trên tên file)
+                // Để đảm bảo logic: Lấp vào đầu kỳ (lấy file cũ nhất) và Lấp vào cuối kỳ (lấy file mới nhất) hoạt động đúng
+                intermediateCollections.sort((a, b) => {
+                    const dateA = parseDateFromLabel(a.label);
+                    const dateB = parseDateFromLabel(b.label);
+                    return dateA - dateB;
+                });
+
                 statusElement.textContent = `Đã thêm ${results.length} file vào danh sách (Tổng: ${intermediateCollections.length}).`;
                 statusElement.className = 'status success';
 
@@ -1509,11 +1553,14 @@
                     if (key === 'name' || key === 'rank') {
                         userObj[key] = val || 'Không xác định';
                     } else if (key === 'win_rate') {
-                         if (val === undefined || val === null) val = '0%';
-                         if (typeof val === 'number') val = (val * 100).toFixed(2) + '%';
-                         let strVal = val.toString().replace(',', '.');
-                         if (!strVal.endsWith('%')) strVal += '%';
-                         userObj[key] = strVal;
+                         if (val === undefined || val === null) val = 0;
+                         if (typeof val === 'string') {
+                             val = parseFloat(val.replace('%', '').replace(',', '.'));
+                         } else if (typeof val === 'number') {
+                             if (val <= 1 && val > 0) val = val * 100;
+                         }
+                         if (isNaN(val)) val = 0;
+                         userObj[key] = parseFloat(val.toFixed(2));
                     } else if (key === 'date') {
                         userObj[key] = val; // Giữ nguyên giá trị Date, không ép kiểu số
                     } else {
@@ -1554,7 +1601,7 @@
                     const collectKeys = (dataObj) => {
                         Object.values(dataObj).forEach(user => {
                             Object.keys(user).forEach(k => {
-                                if (!['name', 'userId', 'rank', 'win_rate', 'date'].includes(k)) allKeys.add(k); // Loại trừ 'date' khỏi danh sách so sánh
+                                if (!['name', 'userId', 'rank', 'date'].includes(k)) allKeys.add(k); // Loại trừ 'date' khỏi danh sách so sánh
                             });
                         });
                     };
@@ -1682,25 +1729,52 @@
                             // Không có ghi chú đặc biệt
                         }
                         
+                        // Chuẩn bị dữ liệu hiển thị (có tính đến việc vá dữ liệu từ file trung gian)
+                        const effectiveStartStats = startStats ? { ...startStats } : {};
+                        const effectiveEndStats = endStats ? { ...endStats } : {};
+                        const sourceFlags = {};
+
+                        // Tính toán diff và vá dữ liệu cho TẤT CẢ các cột
+                        allAvailableStats.forEach(stat => {
+                            let valStart = startStats?.[stat.key];
+                            let valEnd = endStats?.[stat.key];
+
+                            // SMART FIX: Nếu dữ liệu đầu kỳ bị thiếu cột này (undefined) nhưng có dữ liệu trung gian, dùng trung gian thay thế
+                            if ((valStart === undefined || valStart === null) && interFirst && interFirst[stat.key] !== undefined) {
+                                valStart = interFirst[stat.key];
+                                effectiveStartStats[stat.key] = valStart; // Cập nhật vào object hiển thị
+                                sourceFlags[`${stat.key}_start`] = 'intermediate'; // Đánh dấu nguồn
+                            }
+                            
+                            // Tương tự cho dữ liệu cuối kỳ
+                            if ((valEnd === undefined || valEnd === null) && interLast && interLast[stat.key] !== undefined) {
+                                valEnd = interLast[stat.key];
+                                effectiveEndStats[stat.key] = valEnd; // Cập nhật vào object hiển thị
+                                sourceFlags[`${stat.key}_end`] = 'intermediate'; // Đánh dấu nguồn
+                            }
+                        });
+
                         const dataItem = {
                             userId,
                             // SMART: Ưu tiên lấy tên/rank từ tháng 7 -> tháng 6 -> trung gian
                             name: julyStats?.name || juneStats?.name || interLast?.name || 'Không xác định',
                             rank: julyStats?.rank || juneStats?.rank || interLast?.rank || 'Không xác định',
-                            juneStats: startStats, // Gán vào slot hiển thị bên trái
-                            julyStats: endStats,   // Gán vào slot hiển thị bên phải
-                            hasBothData: !!(startStats && endStats),
+                            juneStats: effectiveStartStats, // Gán dữ liệu đã được vá để hiển thị
+                            julyStats: effectiveEndStats,   // Gán dữ liệu đã được vá để hiển thị
+                            hasBothData: (Object.keys(effectiveStartStats).length > 0 && Object.keys(effectiveEndStats).length > 0),
                             isMissed: isMissed,
                             note: note, // Lưu ghi chú
-                            presenceScore: presenceScore // Lưu điểm hiện diện
+                            presenceScore: presenceScore, // Lưu điểm hiện diện
+                            sourceFlags: sourceFlags // Lưu cờ nguồn dữ liệu để hiển thị (Tg)
                         };
 
                         // Tính toán tất cả các trường chênh lệch (Diff) cho TẤT CẢ các cột có sẵn
                         // Để khi bật/tắt cột không cần tính lại
                         allAvailableStats.forEach(stat => {
-                            dataItem[`${stat.key}Diff`] = calculateDifference(endStats?.[stat.key], startStats?.[stat.key]);
+                            const valStart = dataItem.juneStats[stat.key];
+                            const valEnd = dataItem.julyStats[stat.key];
+                            dataItem[`${stat.key}Diff`] = calculateDifference(valEnd, valStart);
                         });
-                        dataItem['win_rateDiff'] = getWinRateDiffValue(endStats?.win_rate, startStats?.win_rate);
                         
                         currentData.push({
                             ...dataItem, // Thêm tất cả các trường diff đã tính
@@ -1708,6 +1782,7 @@
                     });
 
                     // Khởi tạo và áp dụng bộ chọn cột (sẽ tự động render bảng)
+                    updateColumnGroups();
                     initColumnSelector();
                     applyColumnSelection();
 
@@ -1762,14 +1837,6 @@
                 tr1.appendChild(th);
             });
 
-            // Cột Win Rate (luôn ở cuối nếu có, nhưng ở đây ta coi nó là cố định cuối cùng)
-            const thWinRate = document.createElement('th');
-            thWinRate.colSpan = 3;
-            thWinRate.className = 'group-win-rate sortable';
-            thWinRate.dataset.sortKey = 'win_rateDiff';
-            thWinRate.innerHTML = 'Tỉ Lệ Chiến Thắng <span class="sort-icon"></span>';
-            tr1.appendChild(thWinRate);
-
             // Cột Ghi chú (Mới)
             const thNote = document.createElement('th');
             thNote.rowSpan = 2;
@@ -1784,7 +1851,7 @@
             tr2.id = 'sub-header-row';
 
             // Tạo header phụ cho mỗi chỉ số trong activeStatsConfig + WinRate
-            const totalMetricGroups = activeStatsConfig.length + 1; // +1 cho WinRate
+            const totalMetricGroups = activeStatsConfig.length;
             
             for (let i = 0; i < totalMetricGroups; i++) {
                 const thJune = document.createElement('th');
@@ -1878,7 +1945,7 @@
             }, 0);
 
             sortedData.forEach((item, index) => {
-                const { userId, name, rank, juneStats, julyStats, hasBothData, isMissed, note } = item;
+                const { userId, name, rank, juneStats, julyStats, hasBothData, isMissed, note, sourceFlags } = item;
 
                 const row = document.createElement('tr');
                 row.dataset.userid = userId; // Lưu userId vào dataset để dùng cho export
@@ -1897,8 +1964,32 @@
                     const juneValue = juneStats?.[stat.key];
                     const julyValue = julyStats?.[stat.key];
                     
-                    let diffContent = formatDifference(juneValue, julyValue, selectedMonths.june, selectedMonths.july);
+                    let diffContent = formatDifference(juneValue, julyValue, selectedMonths.june, selectedMonths.july, stat.key);
                     let cellStyle = '';
+
+                    // Hiển thị ký hiệu (Tg) ở cột Tổng (Diff) để người dùng thấy được khi ở chế độ Tinh gọn
+                    if (sourceFlags && (sourceFlags[`${stat.key}_start`] === 'intermediate' || sourceFlags[`${stat.key}_end`] === 'intermediate')) {
+                        diffContent += ' <span style="color:#d84315; font-weight:bold; font-size: 0.8em;" title="Dữ liệu được tính từ file trung gian">(Tg)</span>';
+                    }
+
+                    // Xử lý hiển thị nguồn dữ liệu (nếu lấy từ trung gian)
+                    let startDisplay = formatNumber(juneValue, selectedMonths.june, stat.key);
+                    let startStyle = '';
+                    let startTitle = '';
+                    if (sourceFlags && sourceFlags[`${stat.key}_start`] === 'intermediate') {
+                        startDisplay += ' <span style="color:#d84315; font-weight:bold; font-size: 0.8em;">(Tg)</span>';
+                        startStyle = 'background-color: #fff3e0; border: 1px solid #ffcc80;';
+                        startTitle = 'Dữ liệu này được lấy từ file trung gian do file gốc bị thiếu cột này';
+                    }
+
+                    let endDisplay = formatNumber(julyValue, selectedMonths.july, stat.key);
+                    let endStyle = '';
+                    let endTitle = '';
+                    if (sourceFlags && sourceFlags[`${stat.key}_end`] === 'intermediate') {
+                        endDisplay += ' <span style="color:#d84315; font-weight:bold; font-size: 0.8em;">(Tg)</span>';
+                        endStyle = 'background-color: #fff3e0; border: 1px solid #ffcc80;';
+                        endTitle = 'Dữ liệu này được lấy từ file trung gian do file gốc bị thiếu cột này';
+                    }
 
                     // Thêm hiển thị phần trăm đóng góp cho chỉ số Kills
                     if (stat.key === 'kills') {
@@ -1911,19 +2002,11 @@
                     }
 
                     statsHtml += `
-                <td class="${stat.cellClass} month-col">${formatNumber(juneValue, selectedMonths.june)}</td>
-                <td class="${stat.cellClass} month-col">${formatNumber(julyValue, selectedMonths.july)}</td>
+                <td class="${stat.cellClass} month-col" style="${startStyle}" title="${startTitle}">${startDisplay}</td>
+                <td class="${stat.cellClass} month-col" style="${endStyle}" title="${endTitle}">${endDisplay}</td>
                 <td class="${stat.cellClass} diff-col" ${cellStyle}>${diffContent}</td>
             `;
                 });
-
-                // Xử lý riêng cho Tỉ lệ thắng
-                const winRateDiff = compareWinRates(julyStats?.win_rate, juneStats?.win_rate);
-                let winRateHtml = `
-            <td class="group-win-rate-cell month-col">${juneStats?.win_rate || '<span class="no-data">N/A</span>'}</td>
-            <td class="group-win-rate-cell month-col">${julyStats?.win_rate || '<span class="no-data">N/A</span>'}</td>
-            <td class="group-win-rate-cell diff-col">${winRateDiff}</td>
-        `;
 
                 let rowHtml = `<td>${index + 1}</td><td>${displayName}</td>`;
                 if (visibleFixedColumns.userId) rowHtml += `<td class="id-col">${userId}</td>`;
@@ -1931,7 +2014,6 @@
 
                 row.innerHTML = rowHtml + `
             ${statsHtml}
-            ${winRateHtml}
             <td class="note-col" style="font-size: 11px; color: #d32f2f; font-style: italic;">${note || ''}</td>
         `;
 
@@ -1969,8 +2051,12 @@
         }
 
         // Các hàm tiện ích
-        function formatNumber(num, month) {
+        function formatNumber(num, month, key) {
             if (num === undefined || num === null) return `<span class="no-data">No data ${month}</span>`;
+            if (key === 'win_rate') return num.toLocaleString('vi-VN') + '%';
+            if (key && RSS_KEYS.includes(key)) {
+                return formatRSSNumber(num);
+            }
             return num.toLocaleString();
         }
 
@@ -1979,7 +2065,7 @@
             return newVal - oldVal;
         }
 
-        function formatDifference(oldVal, newVal, oldMonth, newMonth) {
+        function formatDifference(oldVal, newVal, oldMonth, newMonth, key) {
             if (oldVal === undefined || oldVal === null) {
                 return `<span class="no-data">No data ${oldMonth}</span>`;
             }
@@ -1989,29 +2075,16 @@
 
             const diff = calculateDifference(newVal, oldVal);
             if (diff === null) return '<span class="no-data">N/A</span>';
-            if (diff > 0) return `<span class="positive">+${diff.toLocaleString()}</span>`;
-            if (diff < 0) return `<span class="negative">${diff.toLocaleString()}</span>`;
+            
+            let displayDiff = diff.toLocaleString();
+            if (key === 'win_rate') displayDiff = diff.toLocaleString('vi-VN') + '%';
+            if (key && RSS_KEYS.includes(key)) {
+                displayDiff = formatRSSNumber(diff);
+            }
+
+            if (diff > 0) return `<span class="positive">+${displayDiff}</span>`;
+            if (diff < 0) return `<span class="negative">${displayDiff}</span>`;
             return `<span class="neutral">0</span>`;
-        }
-
-        function compareWinRates(newRate, oldRate) {
-            if (!newRate || !oldRate) return '<span class="no-data">N/A</span>';
-
-            const newNum = parseFloat(newRate.replace('%', ''));
-            const oldNum = parseFloat(oldRate.replace('%', ''));
-            const diff = newNum - oldNum;
-
-            if (diff > 0) return `<span class="positive">+${diff.toFixed(2)}%</span>`;
-            if (diff < 0) return `<span class="negative">${diff.toFixed(2)}%</span>`;
-            return `<span class="neutral">0%</span>`;
-        }
-
-        function getWinRateDiffValue(newRate, oldRate) {
-            if (!newRate || !oldRate) return null;
-            const newNum = parseFloat(newRate.replace('%', ''));
-            const oldNum = parseFloat(oldRate.replace('%', ''));
-            if (isNaN(newNum) || isNaN(oldNum)) return null;
-            return newNum - oldNum;
         }
 
 
@@ -2074,7 +2147,6 @@
             const statMapping = {};
             const configSource = (allAvailableStats && allAvailableStats.length > 0) ? allAvailableStats : activeStatsConfig;
             configSource.forEach(s => statMapping[s.key] = s.name);
-            statMapping['win_rate'] = "Tỉ Lệ Chiến Thắng";
             
             let tableBodyHtml = '';
             for (const key in statMapping) {
@@ -2082,9 +2154,7 @@
                 const juneValue = juneStats ? juneStats[key] : undefined;
                 const julyValue = julyStats ? julyStats[key] : undefined;
 
-                let diffHtml = (key === 'win_rate')
-                    ? compareWinRates(julyValue, juneValue)
-                    : formatDifference(juneValue, julyValue, juneMonth, julyMonth);
+                let diffHtml = formatDifference(juneValue, julyValue, juneMonth, julyMonth, key);
 
                 let cellStyle = '';
                 if (key === 'kills') {
@@ -2099,8 +2169,8 @@
                 tableBodyHtml += `
             <tr>
                 <td class="stat-name">${statName}</td>
-                <td style="text-align: right;">${key === 'win_rate' ? (juneValue || `<span class="no-data">No data ${juneMonth}</span>`) : formatNumber(juneValue, juneMonth)}</td>
-                <td style="text-align: right;">${key === 'win_rate' ? (julyValue || `<span class="no-data">No data ${julyMonth}</span>`) : formatNumber(julyValue, julyMonth)}</td>
+                <td style="text-align: right;">${formatNumber(juneValue, juneMonth, key)}</td>
+                <td style="text-align: right;">${formatNumber(julyValue, julyMonth, key)}</td>
                 <td style="text-align: right;" ${cellStyle}>${diffHtml}</td>
             </tr>
         `;
@@ -2419,27 +2489,60 @@
                         return cell;
                     };
 
+                    // Sử dụng tất cả các cột có sẵn cho bản xuất Đầy đủ
+                    const exportConfig = allAvailableStats;
+
                     // --- MỚI: Chuẩn bị dữ liệu Tổng Thống Kê ---
-                    const totals = calculateTotals();
+                    const totals = calculateTotals(exportConfig);
                     // Padding để bắt đầu từ cột H (index 7: A,B,C,D,E,F,G là trống)
                     const paddingH = Array.from({ length: 7 }, () => createCell(""));
-                    const summaryHeaders = [...paddingH, createCell("Tổng Thống Kê", 's', null, { font: { bold: true } })];
+                    
+                    // Xác định tiêu đề nhóm dựa trên các cột đang hiển thị
+                    let summaryTitle = "Tổng Thống Kê";
+                    // Với bản xuất đầy đủ, ta hiển thị tiêu đề chung
+                    if (exportConfig.length === allAvailableStats.length) {
+                        summaryTitle = "Tổng Thống Kê (Toàn bộ)";
+                    }
+                    for (const groupKey in COLUMN_GROUPS) {
+                        const group = COLUMN_GROUPS[groupKey];
+                        const groupStatKeys = group.keys.filter(k => k !== 'userId' && k !== 'rank').sort().join(',');
+                        // Logic cũ cho activeKeys, nhưng ở đây ta dùng exportConfig nên có thể bỏ qua hoặc giữ lại nếu muốn dynamic title
+                        const currentKeys = exportConfig.map(s => s.key).sort().join(',');
+                        if (currentKeys === groupStatKeys && currentKeys.length > 0) {
+                            summaryTitle = "Tổng Thống Kê (" + group.title.replace(/^Nhóm \d+: /, '') + ")";
+                            break;
+                        }
+                    }
+                    if (watermarkText) summaryTitle += ` (${watermarkText})`;
+
+                    const summaryHeaders = [...paddingH, createCell(summaryTitle, 's', null, { font: { bold: true } })];
                     const summaryRow = [...paddingH, createCell("")];
                     
-                    // Danh sách các chỉ số tổng cần xuất theo thứ tự yêu cầu
-                    const summaryMetrics = [
-                        { key: 'killsDiff', label: 'Tổng Kills' },
-                        { key: 'troops_lostDiff', label: 'Tổng Số Quân Tổn Thất' },
-                        { key: 'enemies_destroyedDiff', label: 'Tổng Kẻ Thù Tiêu Diệt' },
-                        { key: 'enemy_woundedDiff', label: 'Tổng Quân Địch Bị Thương' },
-                        { key: 'troops_woundedDiff', label: 'Tổng Quân Đội Bị Thương' }
-                    ];
+                    // Tính tổng RSS (Lúa, Gỗ, Đá, Quặng, Vàng) nếu có hiển thị
+                    const rssKeysForTotal = ['food_sent', 'timber_sent', 'stone_sent', 'ore_sent', 'gold_sent'];
+                    const activeRssKeys = exportConfig.filter(s => rssKeysForTotal.includes(s.key));
+                    
+                    if (activeRssKeys.length > 0) {
+                        let totalRSS = 0;
+                        activeRssKeys.forEach(s => {
+                            const val = totals[`${s.key}Diff`];
+                            if (typeof val === 'number') totalRSS += val;
+                        });
+                        
+                        summaryHeaders.push(createCell("Tổng RSS", 's', null, { font: { bold: true } }));
+                        const style = { font: { bold: true } };
+                        if (totalRSS > 0) style.font.color = { rgb: "FF008000" };
+                        if (totalRSS < 0) style.font.color = { rgb: "FFFF0000" };
+                        summaryRow.push(createCell(formatRSSNumber(totalRSS), 's', null, style));
+                    }
 
-                    summaryMetrics.forEach(metric => {
-                        if (totals[metric.key] !== undefined) {
-                            summaryHeaders.push(createCell(metric.label, 's', null, { font: { bold: true } }));
+                    // Tạo các cột tổng dựa trên activeStatsConfig
+                    activeStatsConfig.forEach(stat => {
+                        const key = `${stat.key}Diff`;
+                        if (totals[key] !== undefined) {
+                            summaryHeaders.push(createCell(stat.name, 's', null, { font: { bold: true } }));
                             
-                            const val = totals[metric.key];
+                            const val = totals[key];
                             const style = { font: { bold: true } };
                             if (val > 0) style.font.color = { rgb: "FF008000" }; // Màu Xanh
                             if (val < 0) style.font.color = { rgb: "FFFF0000" }; // Màu Đỏ
@@ -2449,22 +2552,14 @@
 
                     const dataToExport = [summaryHeaders, summaryRow, [], []]; // Khởi tạo với dữ liệu tổng
 
-                    // Tạo danh sách cột cho xuất Excel đầy đủ: Bao gồm tất cả cột chuẩn + cột tùy chỉnh (nếu có)
-                    const fullExportConfig = [...DEFAULT_STATS_CONFIG];
-                    
-                    // Thêm các cột tùy chỉnh (có trong activeStatsConfig nhưng không có trong DEFAULT_STATS_CONFIG)
-                    activeStatsConfig.forEach(stat => {
-                        if (!DEFAULT_STATS_CONFIG.some(s => s.key === stat.key)) {
-                            fullExportConfig.push(stat);
-                        }
-                    });
+                    // Sử dụng exportConfig (allAvailableStats) để đảm bảo xuất hết tất cả cột
+                    const fullExportConfig = exportConfig;
 
                     const headers = ["Loại Dữ Liệu", "Tên", "User ID", "Rank"];
                     fullExportConfig.forEach(s => {
                         headers.push(s.name);
                         if (s.key === 'kills') headers.push("Phần Trăm Kill");
                     });
-                    headers.push("Tỉ Lệ Chiến Thắng");
                     headers.push("Date");
 
                     // Tiêu đề chính
@@ -2472,44 +2567,35 @@
                     dataToExport[2] = [createCell(`Báo cáo so sánh thống kê - Ngày xuất: ${new Date().toLocaleString('vi-VN')}${watermarkText ? ` - ${watermarkText}` : ''}`, 's', null, { font: { bold: true } })];
                     dataToExport.push(headers.map(h => createCell(h, 's', null, { font: { bold: true } })));
 
-                    const createNumericCell = (value, month, style = {}) => {
+                    const createNumericCell = (value, month, style = {}, key, isIntermediate = false) => {
                         if (value === undefined || value === null) {
                             return createCell(`No data ${month}`, 's', null, style, true);
                         }
-                        return createCell(value, 'n', '#,##0', style);
+                        let format = '#,##0';
+                        if (key === 'win_rate') format = '0.00"%"';
+                        
+                        const cellStyle = { ...style };
+                        if (isIntermediate) cellStyle.fill = { fgColor: { rgb: "FFFFE0B2" } }; // Màu cam nhạt
+                        
+                        return createCell(value, 'n', format, cellStyle);
                     };
 
-                    const createDiffCell = (diff, oldVal, newVal, oldMonth, newMonth, style = {}) => {
+                    const createDiffCell = (diff, oldVal, newVal, oldMonth, newMonth, style = {}, key) => {
                         if (oldVal === undefined || oldVal === null) return createCell(`No data ${oldMonth}`, 's', null, style, true);
                         if (newVal === undefined || newVal === null) return createCell(`No data ${newMonth}`, 's', null, style, true);
                         if (diff === null || diff === undefined) return createCell("N/A", 's', null, style, true);
                         const cellStyle = { ...style, font: { ...(style.font || {}) } };
                         if (diff > 0) cellStyle.font.color = { rgb: "FF008000" }; // Green
                         if (diff < 0) cellStyle.font.color = { rgb: "FFFF0000" }; // Red
-                        return createCell(diff, 'n', '+#,##0;-#,##0;0', cellStyle);
+                        
+                        let format = '+#,##0;-#,##0;0';
+                        if (key === 'win_rate') format = '+0.00"%";-0.00"%";0"%"';
+                        return createCell(diff, 'n', format, cellStyle);
                     };
 
-                    const createWinRateDiffCell = (newRate, oldRate, style = {}) => {
-                        if (!oldRate) return createCell(`No data ${selectedMonths.june}`, 's', null, style, true);
-                        if (!newRate) return createCell(`No data ${selectedMonths.july}`, 's', null, style, true);
-                        const newNum = parseFloat(newRate.replace(',', '.').replace('%', ''));
-                        const oldNum = parseFloat(oldRate.replace(',', '.').replace('%', ''));
-                        if (isNaN(newNum) || isNaN(oldNum)) return createCell("N/A", 's', null, style, true);
-
-                        const diff = newNum - oldNum;
-                        const cellStyle = { ...style, font: { ...(style.font || {}) } };
-                        let text = `${diff.toFixed(2)}%`;
-                        if (diff > 0) {
-                            cellStyle.font.color = { rgb: "FF008000" }; // Green
-                            text = `+${text}`;
-                        } else if (diff < 0) {
-                            cellStyle.font.color = { rgb: "FFFF0000" }; // Red
-                        }
-                        return createCell(text, 's', null, cellStyle);
-                    };
 
                     visibleData.forEach((item, index) => {
-                        const { userId, name, rank, juneStats, julyStats, note } = item;
+                        const { userId, name, rank, juneStats, julyStats, note, sourceFlags } = item;
                         const getStat = (stats, key) => (stats ? stats[key] : undefined);
                         
                         // Tạo style nền xen kẽ (zebra striping)
@@ -2520,10 +2606,10 @@
                             createCell("", 's', null, rowStyle), createCell(name, 's', null, rowStyle), createCell(userId, 's', null, rowStyle), createCell(rank, 's', null, rowStyle),
                         ];
                         fullExportConfig.forEach(s => {
-                            juneRow.push(createNumericCell(getStat(juneStats, s.key), selectedMonths.june, rowStyle));
+                            const isInter = sourceFlags && sourceFlags[`${s.key}_start`] === 'intermediate';
+                            juneRow.push(createNumericCell(getStat(juneStats, s.key), selectedMonths.june, rowStyle, s.key, isInter));
                             if (s.key === 'kills') juneRow.push(createCell("", 's', null, rowStyle));
                         });
-                        juneRow.push(createCell(getStat(juneStats, 'win_rate') || '0%', 's', null, rowStyle));
                         juneRow.push(createCell(note || '', 's', null, { ...rowStyle, font: { color: { rgb: "FFD32F2F" }, italic: true } }));
                         dataToExport.push(juneRow);
 
@@ -2532,10 +2618,10 @@
                             createCell("", 's', null, rowStyle), createCell(name, 's', null, rowStyle), createCell(userId, 's', null, rowStyle), createCell(rank, 's', null, rowStyle),
                         ];
                         fullExportConfig.forEach(s => {
-                            julyRow.push(createNumericCell(getStat(julyStats, s.key), selectedMonths.july, rowStyle));
+                            const isInter = sourceFlags && sourceFlags[`${s.key}_end`] === 'intermediate';
+                            julyRow.push(createNumericCell(getStat(julyStats, s.key), selectedMonths.july, rowStyle, s.key, isInter));
                             if (s.key === 'kills') julyRow.push(createCell("", 's', null, rowStyle));
                         });
-                        julyRow.push(createCell(getStat(julyStats, 'win_rate') || '0%', 's', null, rowStyle));
                         julyRow.push(createCell("", 's', null, rowStyle));
                         dataToExport.push(julyRow);
 
@@ -2550,7 +2636,8 @@
                                 getStat(julyStats, s.key), 
                                 selectedMonths.june, 
                                 selectedMonths.july,
-                                rowStyle
+                                rowStyle,
+                                s.key
                             ));
                             if (s.key === 'kills') {
                                 const diff = calculateDifference(getStat(julyStats, s.key), getStat(juneStats, s.key));
@@ -2561,7 +2648,6 @@
                                 diffRow.push(createCell(percent, 'n', '0.00%', rowStyle));
                             }
                         });
-                        diffRow.push(createWinRateDiffCell(getStat(julyStats, 'win_rate'), getStat(juneStats, 'win_rate'), rowStyle));
                         diffRow.push(createCell("", 's', null, rowStyle));
                         dataToExport.push(diffRow);
 
@@ -2662,23 +2748,48 @@
                     const totals = calculateTotals();
                     // Padding để bắt đầu từ cột C (index 2: A,B là trống)
                     const paddingC = Array.from({ length: 2 }, () => createCell(""));
-                    const summaryHeaders = [...paddingC, createCell(`Tổng Thống Kê${watermarkText ? ` (${watermarkText})` : ''}`, 's', null, { font: { bold: true } })];
+                    
+                    // Xác định tiêu đề nhóm dựa trên các cột đang hiển thị
+                    let summaryTitle = "Tổng Thống Kê";
+                    const activeKeys = activeStatsConfig.map(s => s.key).sort().join(',');
+                    for (const groupKey in COLUMN_GROUPS) {
+                        const group = COLUMN_GROUPS[groupKey];
+                        const groupStatKeys = group.keys.filter(k => k !== 'userId' && k !== 'rank').sort().join(',');
+                        if (activeKeys === groupStatKeys && activeKeys.length > 0) {
+                            summaryTitle = "Tổng Thống Kê (" + group.title.replace(/^Nhóm \d+: /, '') + ")";
+                            break;
+                        }
+                    }
+                    if (watermarkText) summaryTitle += ` (${watermarkText})`;
+
+                    const summaryHeaders = [...paddingC, createCell(summaryTitle, 's', null, { font: { bold: true } })];
                     const summaryRow = [...paddingC, createCell("")];
                     
-                    // Danh sách các chỉ số tổng cần xuất theo thứ tự yêu cầu
-                    const summaryMetrics = [
-                        { key: 'killsDiff', label: 'Tổng Kills' },
-                        { key: 'troops_lostDiff', label: 'Tổng Số Quân Tổn Thất' },
-                        { key: 'enemies_destroyedDiff', label: 'Tổng Kẻ Thù Tiêu Diệt' },
-                        { key: 'enemy_woundedDiff', label: 'Tổng Quân Địch Bị Thương' },
-                        { key: 'troops_woundedDiff', label: 'Tổng Quân Đội Bị Thương' }
-                    ];
+                    // Tính tổng RSS (Lúa, Gỗ, Đá, Quặng, Vàng) nếu có hiển thị
+                    const rssKeysForTotal = ['food_sent', 'timber_sent', 'stone_sent', 'ore_sent', 'gold_sent'];
+                    const activeRssKeys = activeStatsConfig.filter(s => rssKeysForTotal.includes(s.key));
+                    
+                    if (activeRssKeys.length > 0) {
+                        let totalRSS = 0;
+                        activeRssKeys.forEach(s => {
+                            const val = totals[`${s.key}Diff`];
+                            if (typeof val === 'number') totalRSS += val;
+                        });
+                        
+                        summaryHeaders.push(createCell("Tổng RSS", 's', null, { font: { bold: true } }));
+                        const style = { font: { bold: true } };
+                        if (totalRSS > 0) style.font.color = { rgb: "FF008000" };
+                        if (totalRSS < 0) style.font.color = { rgb: "FFFF0000" };
+                        summaryRow.push(createCell(formatRSSNumber(totalRSS), 's', null, style));
+                    }
 
-                    summaryMetrics.forEach(metric => {
-                        if (totals[metric.key] !== undefined) {
-                            summaryHeaders.push(createCell(metric.label, 's', null, { font: { bold: true } }));
+                    // Tạo các cột tổng dựa trên exportConfig
+                    exportConfig.forEach(stat => {
+                        const key = `${stat.key}Diff`;
+                        if (totals[key] !== undefined) {
+                            summaryHeaders.push(createCell(stat.name, 's', null, { font: { bold: true } }));
                             
-                            const val = totals[metric.key];
+                            const val = totals[key];
                             const style = { font: { bold: true } };
                             if (val > 0) style.font.color = { rgb: "FF008000" }; // Màu Xanh
                             if (val < 0) style.font.color = { rgb: "FFFF0000" }; // Màu Đỏ
@@ -2688,18 +2799,9 @@
 
                     const dataToExport = [summaryHeaders, summaryRow, []]; // Khởi tạo với dữ liệu tổng
 
-                    // Xác định các cột chuẩn cần xuất cho bản tinh gọn theo yêu cầu
-                    const compactStandardKeys = [
-                        'might', 'kills', 'enemies_destroyed', 
-                        'enemy_wounded', 'troops_lost', 'troops_wounded'
-                    ];
-
-                    // Lọc activeStatsConfig: Chỉ lấy các cột chuẩn được yêu cầu HOẶC các cột lạ (custom)
-                    const compactExportConfig = activeStatsConfig.filter(stat => {
-                        if (compactStandardKeys.includes(stat.key)) return true; // Cột chuẩn được yêu cầu
-                        if (!DEFAULT_STATS_CONFIG.some(s => s.key === stat.key)) return true; // Cột lạ (không có trong cấu hình mặc định)
-                        return false; // Cột chuẩn không được yêu cầu (ví dụ: victories, successful_attacks...)
-                    });
+                    // Sử dụng trực tiếp activeStatsConfig để xuất đúng các cột người dùng đã chọn hiển thị
+                    // Thay vì lọc theo danh sách cứng nhắc như trước
+                    const compactExportConfig = activeStatsConfig;
 
                     // Header chỉ gồm STT, Tên và các cột trong cấu hình tinh gọn (Bỏ User ID theo yêu cầu)
                     const headers = ["STT", "Tên"];
@@ -2707,7 +2809,6 @@
                         headers.push(s.name);
                         if (s.key === 'kills') headers.push("Phần Trăm Kill");
                     });
-                    headers.push("Date");
 
                     dataToExport.push(headers.map(h => createCell(h, 's', null, { font: { bold: true } })));
 
@@ -2734,9 +2835,17 @@
                             const diff = getDiff(item, s.key);
                             if (typeof diff === 'number') {
                                 const style = { ...rowStyle, font: {} };
+                                
+                                // Highlight nếu dữ liệu từ nguồn trung gian
+                                if (item.sourceFlags && (item.sourceFlags[`${s.key}_start`] === 'intermediate' || item.sourceFlags[`${s.key}_end`] === 'intermediate')) {
+                                    style.fill = { fgColor: { rgb: "FFFFE0B2" } }; // Màu cam nhạt
+                                }
+
                                 if (diff > 0) style.font.color = { rgb: "FF008000" }; // Màu Xanh
                                 if (diff < 0) style.font.color = { rgb: "FFFF0000" }; // Màu Đỏ
-                                row.push(createCell(diff, 'n', '+#,##0;-#,##0;0', style));
+                                let format = '+#,##0;-#,##0;0';
+                                if (s.key === 'win_rate') format = '+0.00"%";-0.00"%";0"%"';
+                                row.push(createCell(diff, 'n', format, style));
                             } else {
                                 row.push(createCell(diff, 's', null, rowStyle));
                             }
@@ -2964,34 +3073,20 @@
                 header.textContent = `Tháng ${selectedMonth}`;
             });
         }
-        function calculateTotals() {
-            const totals = {
-                // Khởi tạo động dựa trên activeStatsConfig
-            };
+        function calculateTotals(config = activeStatsConfig) {
+            const totals = {};
             
-            // Chỉ tính tổng cho các cột có trong activeStatsConfig
-            activeStatsConfig.forEach(stat => {
+            // Chỉ tính tổng cho các cột có trong config (mặc định là activeStatsConfig)
+            config.forEach(stat => {
                 totals[`${stat.key}Diff`] = 0;
             });
 
             currentData.forEach(item => {
-                const { juneStats, julyStats } = item;
-
-                // Hàm chuyển đổi giá trị thành số hợp lệ
-                const parseValue = (value) => {
-                    if (typeof value === 'number') return value;
-                    if (typeof value === 'string') {
-                        const parsed = parseFloat(value.replace(/[^0-9.-]/g, ''));
-                        return isNaN(parsed) ? 0 : parsed;
-                    }
-                    return 0;
-                };
-
-                activeStatsConfig.forEach(stat => {
-                    const valJune = parseValue(juneStats?.[stat.key]);
-                    const valJuly = parseValue(julyStats?.[stat.key]);
-                    if (juneStats && julyStats) {
-                        totals[`${stat.key}Diff`] += (valJuly - valJune);
+                // Sử dụng giá trị Diff đã được tính toán (bao gồm cả logic fallback trung gian)
+                config.forEach(stat => {
+                    const diff = item[`${stat.key}Diff`];
+                    if (typeof diff === 'number') {
+                        totals[`${stat.key}Diff`] += diff;
                     }
                 });
             });
@@ -3000,24 +3095,77 @@
         }
         function displayTotals() {
             const totals = calculateTotals();
+            const container = document.getElementById('totalsContainer');
+            if (!container) return;
 
-            // Cập nhật các phần tử HTML nếu chúng tồn tại (chỉ cập nhật các chỉ số chính)
-            const updateElement = (id, key) => {
-                const el = document.getElementById(id);
-                if (el) {
-                    const val = totals[key];
-                    // Chỉ hiển thị số nếu có giá trị, ngược lại hiển thị 0
-                    el.textContent = (typeof val === 'number') ? val.toLocaleString('vi-VN') : '0';
+            // Xác định tiêu đề nhóm dựa trên các cột đang hiển thị
+            let title = "Tổng Thống Kê (Tổng chênh lệch)";
+            const activeKeys = activeStatsConfig.map(s => s.key).sort().join(',');
+            
+            for (const groupKey in COLUMN_GROUPS) {
+                const group = COLUMN_GROUPS[groupKey];
+                const groupStatKeys = group.keys.filter(k => k !== 'userId' && k !== 'rank').sort().join(',');
+                
+                if (activeKeys === groupStatKeys && activeKeys.length > 0) {
+                    title = "Tổng Thống Kê (" + group.title.replace(/^Nhóm \d+: /, '') + ")";
+                    break;
                 }
-            };
+            }
 
-            updateElement('totalKills', 'killsDiff');
-            updateElement('totalTroopsLost', 'troops_lostDiff');
-            updateElement('totalEnemyWounded', 'enemy_woundedDiff');
-            updateElement('totalTroopsWounded', 'troops_woundedDiff');
-            updateElement('totalEnemiesDestroyed', 'enemies_destroyedDiff');
+            // Xây dựng nội dung HTML động dựa trên các cột đang hiển thị (activeStatsConfig)
+            let html = `<h3 style="margin: 0 0 10px 0; font-size: 14px; color: #333;">${title}</h3>`;
 
-            document.getElementById('totalsContainer').style.display = 'block';
+            // Tính tổng RSS (Lúa, Gỗ, Đá, Quặng, Vàng) nếu có hiển thị
+            const rssKeysForTotal = ['food_sent', 'timber_sent', 'stone_sent', 'ore_sent', 'gold_sent'];
+            const activeRssKeys = activeStatsConfig.filter(s => rssKeysForTotal.includes(s.key));
+            
+            if (activeRssKeys.length > 0) {
+                let totalRSS = 0;
+                activeRssKeys.forEach(s => {
+                    const val = totals[`${s.key}Diff`];
+                    if (typeof val === 'number') totalRSS += val;
+                });
+                
+                const formattedVal = formatRSSNumber(totalRSS);
+                let colorStyle = '';
+                if (totalRSS > 0) colorStyle = 'color: green;';
+                if (totalRSS < 0) colorStyle = 'color: red;';
+
+                html += `<div style="margin-bottom: 10px; padding: 8px; background-color: #fff8e1; border: 1px solid #ffe0b2; border-radius: 4px; font-size: 14px;">
+                    <strong>Tổng RSS (Lúa + Gỗ + Đá + Quặng + Vàng):</strong> <span style="${colorStyle} font-weight:bold;">${formattedVal}</span>
+                </div>`;
+            }
+
+            html += '<div style="display: flex; flex-wrap: wrap; gap: 10px;">';
+
+            let hasData = false;
+            activeStatsConfig.forEach(stat => {
+                const key = `${stat.key}Diff`;
+                const val = totals[key];
+                
+                if (typeof val === 'number') {
+                    hasData = true;
+                    let formattedVal = val.toLocaleString('vi-VN');
+                    if (RSS_KEYS.includes(stat.key)) {
+                        formattedVal = formatRSSNumber(val);
+                    }
+                    let colorStyle = '';
+                    if (val > 0) colorStyle = 'color: green;';
+                    if (val < 0) colorStyle = 'color: red;';
+                    
+                    html += `<div style="background: #fff; padding: 5px 10px; border: 1px solid #eee; border-radius: 4px; font-size: 13px;">
+                        <strong>${stat.name}:</strong> <span style="${colorStyle} font-weight:bold;">${formattedVal}</span>
+                    </div>`;
+                }
+            });
+            html += '</div>';
+
+            if (hasData) {
+                container.innerHTML = html;
+                container.style.display = 'block';
+            } else {
+                container.style.display = 'none';
+            }
         }
         async function showGitHubFiles(type) {
             const githubFilesContainer = document.getElementById(`githubFiles${type.charAt(0).toUpperCase() + type.slice(1)}`);
@@ -4037,8 +4185,11 @@
                 input.addEventListener('input', (e) => {
                     const newValue = e.target.value;
                     // Cập nhật tempOcrData
-                    if (stat.key === 'name' || stat.key === 'rank' || stat.key === 'win_rate' || stat.key === 'userId') {
+                    if (stat.key === 'name' || stat.key === 'rank' || stat.key === 'userId') {
                         tempOcrData[stat.key] = newValue;
+                    } else if (stat.key === 'win_rate') {
+                        let val = parseFloat(newValue.replace('%', '').replace(',', '.'));
+                        tempOcrData[stat.key] = isNaN(val) ? 0 : val;
                     } else {
                         tempOcrData[stat.key] = parseInt(newValue.replace(/[^0-9]/g, ''), 10) || 0;
                     }
@@ -4298,7 +4449,9 @@
             const winRateRegex = /(?:Tỉ Lệ Chiến Thắng|Win Rate)\s+([\d.,]+%)/i;
             const winRateMatch = ocrText.match(winRateRegex);
             if (winRateMatch && winRateMatch[1]) {
-                stats.win_rate = winRateMatch[1];
+                let val = winRateMatch[1];
+                val = parseFloat(val.replace('%', '').replace(',', '.'));
+                if (!isNaN(val)) stats.win_rate = val;
             }
 
             // 4. Đặt giá trị mặc định cho các trường còn thiếu để đảm bảo dữ liệu nhất quán
@@ -4540,51 +4693,32 @@
             document.getElementById('columnSelectorModal').style.display = 'none';
         }
 
+        function updateColumnGroups() {
+            // Reset group2 keys
+            COLUMN_GROUPS.group2.keys = [];
+            
+            // Tập hợp các key đã được phân nhóm
+            const assignedKeys = new Set([
+                ...COLUMN_GROUPS.group1.keys,
+                ...COLUMN_GROUPS.group3.keys,
+                ...COLUMN_GROUPS.group4.keys,
+                ...COLUMN_GROUPS.group5.keys
+            ]);
+
+            // Phân loại các key còn lại vào Nhóm 2
+            allAvailableStats.forEach(stat => {
+                if (!assignedKeys.has(stat.key)) {
+                    COLUMN_GROUPS.group2.keys.push(stat.key);
+                }
+            });
+        }
+
         function initColumnSelector() {
             const container = document.getElementById('columnSelectorContainer');
             container.innerHTML = '';
             container.style.display = 'block'; // Đảm bảo hiển thị dạng block để chứa các nhóm
 
             const savedVisibleColumns = JSON.parse(localStorage.getItem('visibleColumns')) || {};
-
-            // Định nghĩa các nhóm theo yêu cầu
-            const groups = {
-                group1: {
-                    title: "Nhóm 1: Thông tin chính & Chiến đấu",
-                    keys: ['userId', 'rank', 'might', 'kills', 'enemies_destroyed', 'enemy_wounded', 'troops_wounded', 'troops_lost']
-                },
-                group3: {
-                    title: "Nhóm 3: Tù nhân & Chỉ huy",
-                    keys: ['prisoners_executed', 'prisoners_escaped', 'leaders_escaped', 'leaders_captured', 'leaders_executed', 'bounty_collected']
-                },
-                group4: {
-                    title: "Nhóm 4: Tài nguyên & Hỗ trợ",
-                    keys: ['food_sent', 'timber_sent', 'stone_sent', 'ore_sent', 'gold_sent', 'total_resources_gathered', 'help_sent']
-                },
-                group5: {
-                    title: "Nhóm 5: Đấu trường (Colosseum)",
-                    keys: ['current_colosseum_rank', 'best_colosseum_rank', 'colosseum_battles_won']
-                },
-                group2: {
-                    title: "Nhóm 2: Các chỉ số khác",
-                    keys: [] // Sẽ được điền tự động các cột còn lại
-                }
-            };
-
-            // Tập hợp các key đã được phân nhóm
-            const assignedKeys = new Set([
-                ...groups.group1.keys,
-                ...groups.group3.keys,
-                ...groups.group4.keys,
-                ...groups.group5.keys
-            ]);
-
-            // Phân loại các key còn lại vào Nhóm 2
-            allAvailableStats.forEach(stat => {
-                if (!assignedKeys.has(stat.key)) {
-                    groups.group2.keys.push(stat.key);
-                }
-            });
 
             // Hàm tìm thông tin hiển thị của key
             const getStatInfo = (key) => {
@@ -4595,7 +4729,7 @@
 
             // Hàm render một nhóm
             const renderGroup = (groupKey) => {
-                const group = groups[groupKey];
+                const group = COLUMN_GROUPS[groupKey];
                 // Lọc ra các key thực sự có dữ liệu (có trong allAvailableStats hoặc là userId/rank)
                 const validKeys = group.keys.filter(key => {
                     if (key === 'userId' || key === 'rank') return true;
