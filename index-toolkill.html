@@ -2783,8 +2783,8 @@
                         summaryRow.push(createCell(formatRSSNumber(totalRSS), 's', null, style));
                     }
 
-                    // Tạo các cột tổng dựa trên exportConfig
-                    exportConfig.forEach(stat => {
+                    // Tạo các cột tổng dựa trên activeStatsConfig
+                    activeStatsConfig.forEach(stat => {
                         const key = `${stat.key}Diff`;
                         if (totals[key] !== undefined) {
                             summaryHeaders.push(createCell(stat.name, 's', null, { font: { bold: true } }));
